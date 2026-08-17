@@ -4,6 +4,7 @@ mod hvb;
 mod package;
 mod tools;
 mod update_bin;
+mod workspace;
 
 use clap::Parser;
 
@@ -13,7 +14,6 @@ const ANSI_RESET: &str = "\x1b[0m";
 
 fn main() {
     show_privilege_status();
-
     let cli = cli::Cli::parse();
     if let Err(error) = cli::run(cli) {
         eprintln!("error: {error:#}");
@@ -23,16 +23,17 @@ fn main() {
 
 fn show_privilege_status() {
     if is_superuser() {
-        eprintln!("{ANSI_RED}you are currently in root mode use it at risk.{ANSI_RESET}");
+        eprintln!("{ANSI_RED}You are currently in root mode, use it at risk.{ANSI_RESET}");
     } else {
-        eprintln!("{ANSI_YELLOW}you are currently not in root mode.{ANSI_RESET}");
+        eprintln!(
+            "{ANSI_YELLOW}You are currently not in root mode, extract may cause permission problems.{ANSI_RESET}"
+        );
     }
 }
 
 fn is_superuser() -> bool {
     #[cfg(unix)]
     {
-        // SAFETY: geteuid only reads the effective user ID of the current process.
         unsafe { libc::geteuid() == 0 }
     }
 

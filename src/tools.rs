@@ -35,20 +35,20 @@ impl ToolPaths {
 fn default_tools_dir() -> Result<PathBuf> {
     let executable = env::current_exe().context("locating the haucet-tools executable")?;
     for ancestor in executable.ancestors() {
-        let candidate = ancestor.join("bin/linux");
+        let candidate = ancestor.join("bin");
         if has_tools(&candidate) {
             return Ok(candidate);
         }
     }
 
-    let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join("../bin/linux");
+    let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join("bin");
     if has_tools(&manifest_candidate) {
         return manifest_candidate
             .canonicalize()
             .context("resolving bundled Linux tools");
     }
 
-    bail!("could not locate bin/linux; pass --tools-dir <DIR>")
+    bail!("could not locate bin; pass --tools-dir <DIR>")
 }
 
 fn has_tools(directory: &Path) -> bool {
