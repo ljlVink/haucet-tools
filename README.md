@@ -9,7 +9,7 @@ partition images, and HVB ramdisk images.
 cargo build --release --manifest-path haucet-tools/Cargo.toml
 ```
 
-The binary uses `bin/linux/extract.erofs` and `bin/linux/mkfs.erofs` from this
+The binary uses `bin/extract.erofs` and `bin/mkfs.erofs` from this
 repository. Pass `--tools-dir DIR` when running it from another location.
 
 ## Full Package Unpack
@@ -17,6 +17,11 @@ repository. Pass `--tools-dir DIR` when running it from another location.
 ```sh
 haucet-tools unpack update_full_base.zip --out work
 ```
+
+After a successful unpack, the workspace is made writable by the invoking
+user. When run through `sudo`, ownership is assigned using `SUDO_UID` and
+`SUDO_GID`; target filesystem metadata remains recorded for repacking. Pass
+`--skip-chown` to preserve the extracted host ownership and modes unchanged.
 
 By default every component image is inspected. Images with the EROFS
 superblock magic at offset 1024 are handled by `extract.erofs`; images with a
@@ -101,9 +106,3 @@ when its filesystem and wrapper are structurally valid.
 
 The initial release rebuilds partition images. It does not create a newly
 signed `update.bin` or `update_full_base.zip`.
-
-## License
-
-The integrated program is GPL-3.0-only because it links `ramdisk-tools`.
-Huawei `update_packaging_tools` format behavior is used under Apache-2.0; see
-`NOTICE` and the license files in the parent repository.
