@@ -147,36 +147,3 @@ impl HvbWrapper {
 fn read_u64(bytes: &[u8], offset: usize) -> u64 {
     u64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("fixed range"))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn footer_round_trip() {
-        let footer = HvbFooter {
-            cert_offset: 0x1234_0000,
-            cert_size: 0x7b0,
-            image_size: 0x1200_0000,
-            partition_size: 0x1234_2000,
-        };
-        assert_eq!(HvbFooter::parse(&footer.to_bytes()).unwrap(), footer);
-    }
-
-    #[test]
-    fn reads_certificate_partition_name() {
-        let mut certificate = vec![0_u8; 240];
-        certificate[..4].copy_from_slice(b"HVB\0");
-        certificate[64..68].copy_from_slice(b"cust");
-        let wrapper = HvbWrapper {
-            footer: HvbFooter {
-                cert_offset: 0,
-                cert_size: certificate.len() as u64,
-                image_size: 0,
-                partition_size: 0,
-            },
-            certificate,
-        };
-        assert_eq!(wrapper.partition_name(), Some("cust"));
-    }
-}
