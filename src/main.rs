@@ -32,13 +32,7 @@ fn show_privilege_status() {
 }
 
 fn is_superuser() -> bool {
-    #[cfg(unix)]
     {
         unsafe { libc::geteuid() == 0 }
-    }
-
-    #[cfg(not(unix))]
-    {
-        false
     }
 }
