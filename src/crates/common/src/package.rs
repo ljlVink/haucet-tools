@@ -267,15 +267,8 @@ fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
     let image = image
         .canonicalize()
         .with_context(|| format!("resolving ramdisk image {}", image.display()))?;
-    let _working_directory = crate::workspace::WorkingDirectory::enter(workspace)?;
-    let args = vec![
-        "haucet-tools ramdisk".to_owned(),
-        "unpack".to_owned(),
-        image.to_string_lossy().into_owned(),
-    ];
-    let code = crate::ramdisk::run(&args);
-    ensure!(code == 0, "ramdisk command failed for {}", image.display());
-    Ok(())
+    crate::ramdisk::unpack(&image, workspace)
+        .with_context(|| format!("unpacking ramdisk image {}", image.display()))
 }
 fn validate_partition_name(name: &str) -> Result<()> {
     let mut parts = Path::new(name).components();

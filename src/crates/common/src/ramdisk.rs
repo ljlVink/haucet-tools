@@ -4,7 +4,6 @@ use crate::compress::{compress_vec, decompress_vec};
 use crate::formats::cpio::Cpio;
 use crate::formats::harmony::HvbFrame;
 use crate::formats::header::{FileFormat, check_fmt};
-use crate::rvt;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -13,7 +12,7 @@ fn rebuild_image(
     frame: &mut HvbFrame,
     orig_payload: &[u8],
     cpio_bytes: &[u8],
-    out_path: &str,
+    out_path: &Path,
 ) -> io::Result<()> {
     let fmt = check_fmt(orig_payload);
     if !fmt.is_compressed() && !matches!(fmt, FileFormat::RAW) {
@@ -35,25 +34,15 @@ fn rebuild_image(
         frame.footer.image_size, frame.footer.cert_offset, frame.footer.partition_size
     );
     frame.write(out_path)?;
-    eprintln!("Wrote {out_path} ({} bytes)", frame.footer.partition_size);
+    eprintln!(
+        "Wrote {} ({} bytes)",
+        out_path.display(),
+        frame.footer.partition_size
+    );
     Ok(())
 }
 
-fn ramdiskpatch_cmd(args: &[String]) -> io::Result<()> {
-    if args.len() < 2 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "ramdiskpatch: needs <image> <binary> [out_image]",
-        ));
-    }
-    let image_path = &args[0];
-    let hsu_path = &args[1];
-    let out_path = if args.len() >= 3 {
-        args[2].clone()
-    } else {
-        "new-ramdisk.img".to_string()
-    };
-
+pub fn patch(image_path: &Path, hsu_path: &Path, out_path: &Path) -> io::Result<()> {
     let mut frame = HvbFrame::load(image_path)?;
     let orig_payload = frame.extract_image_payload().to_vec();
 
@@ -83,8 +72,8 @@ fn ramdiskpatch_cmd(args: &[String]) -> io::Result<()> {
     cpio.mkdir(0o750, ".backup");
     cpio.mv("bin/init_early", ".backup/init_early")?;
     eprintln!("  mv bin/init_early -> .backup/init_early");
-    cpio.add(0o750, "bin/init_early", hsu_path)?;
-    eprintln!("  add bin/init_early <- {hsu_path} (mode 0750)");
+    cpio.add(0o750, "bin/init_early", path_str(hsu_path)?)?;
+    eprintln!("  add bin/init_early <- {} (mode 0750)", hsu_path.display());
 
     // The HVB cert records the ORIGINAL compressed payload length and BL
     // truncates to it, so the final payload must not exceed the original.
@@ -99,7 +88,7 @@ fn ramdiskpatch_cmd(args: &[String]) -> io::Result<()> {
     let mut out_cpio = Vec::new();
     cpio.dump_to(&mut out_cpio)?;
 
-    rebuild_image(&mut frame, &orig_payload, &out_cpio, &out_path)?;
+    rebuild_image(&mut frame, &orig_payload, &out_cpio, out_path)?;
 
     let orig_len = frame.cert.image_original_len;
     let new_len = frame.footer.image_size;
@@ -117,97 +106,7 @@ fn ramdiskpatch_cmd(args: &[String]) -> io::Result<()> {
     Ok(())
 }
 
-const USAGE: &str = "haucet-tools ramdisk - HMOS boot/ramdisk image tool\n\
-\n\
-Usage: haucet-tools ramdisk <action> [args...]\n\
-\n\
-Supported actions:\n\
-  unpack <image>\n\
-    Unpack an HMOS ramdisk image into the current directory:\n\
-      header.json   - HARMONY! header and HVB footer/certificate summary\n\
-      ramdisk.cpio  - decompressed newc cpio archive\n\
-      ramdisk.bin   - original compressed ramdisk payload\n\
-\n\
-  repack <orig_image> [out_image]\n\
-    Repack the current directory's `ramdisk.cpio` using the compression format\n\
-    from <orig_image>. The HVB certificate is preserved byte-for-byte.\n\
-    [out_image] defaults to `new-ramdisk.img`.\n\
-\n\
-  ramdiskpatch <image> <binary> [out_image]\n\
-    Back up `bin/init_early` to `.backup/init_early`, install <binary> as\n\
-    `bin/init_early` with mode 0750, and preserve the HVB certificate.\n\
-    [out_image] defaults to `new-ramdisk.img`.\n\
-\n\
-  cpio <incpio> [commands...]\n\
-    Run commands on a cpio archive and save modifications in place.\n\
-    Each command must be passed as one quoted argument.\n\
-    Commands:\n\
-      exists ENTRY            exit 0 if the entry exists, otherwise 1\n\
-      ls [-r] [PATH]          list entries\n\
-      rm [-r] ENTRY           remove an entry\n\
-      mkdir MODE ENTRY        create a directory\n\
-      ln SRC DST              create a symbolic link\n\
-      mv SRC DST              move an entry\n\
-      add MODE ENTRY INFILE   add a file\n\
-      extract [ENTRY OUT]     extract all entries or one entry\n\
-      test                    exit 0 for stock, 1 for patched, or 2 unsupported\n\
-\n\
-  info <image>\n\
-    Print the HARMONY! header and HVB footer/certificate fields.\n\
-\n\
-  rvt <image>\n\
-    Parse a raw or HVB-wrapped RVT image without modifying it.\n";
-
-pub fn run(args: &[String]) -> i32 {
-    if args.len() < 2 {
-        eprint!("{USAGE}");
-        return 1;
-    }
-    let action = args[1].as_str();
-    let rest = &args[2..];
-    let result = match action {
-        "unpack" => unpack_cmd(rest),
-        "repack" => repack_cmd(rest),
-        "ramdiskpatch" => ramdiskpatch_cmd(rest),
-        "cpio" => cpio_cmd(rest),
-        "info" => info_cmd(rest),
-        "rvt" => rvt_cmd(rest),
-        "-h" | "--help" | "help" => {
-            eprint!("{USAGE}");
-            Ok(())
-        }
-        other => Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("unknown action: {other}"),
-        )),
-    };
-    match result {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("haucet-tools ramdisk: {action} failed: {e}");
-            1
-        }
-    }
-}
-
-fn rvt_cmd(args: &[String]) -> io::Result<()> {
-    if args.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "rvt: needs <image>",
-        ));
-    }
-    rvt::parse_file(&args[0])
-}
-
-fn unpack_cmd(args: &[String]) -> io::Result<()> {
-    if args.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "unpack: needs <image>",
-        ));
-    }
-    let image_path = &args[0];
+pub fn unpack(image_path: &Path, workspace: &Path) -> io::Result<()> {
     let frame = HvbFrame::load(image_path)?;
 
     print_frame_summary(&frame);
@@ -216,9 +115,11 @@ fn unpack_cmd(args: &[String]) -> io::Result<()> {
     if payload.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "empty payload"));
     }
-    fs::write("ramdisk.bin", payload)?;
+    let payload_path = workspace.join("ramdisk.bin");
+    fs::write(&payload_path, payload)?;
     eprintln!(
-        "Wrote ramdisk.bin ({} bytes, before decompression)",
+        "Wrote {} ({} bytes, before decompression)",
+        payload_path.display(),
         payload.len()
     );
 
@@ -232,59 +133,41 @@ fn unpack_cmd(args: &[String]) -> io::Result<()> {
         eprintln!("WARN: payload recognised as {fmt}; treating as raw cpio");
         payload.to_vec()
     };
-    fs::write("ramdisk.cpio", &cpio_bytes)?;
+    let cpio_path = workspace.join("ramdisk.cpio");
+    fs::write(&cpio_path, &cpio_bytes)?;
     eprintln!(
-        "Wrote ramdisk.cpio ({} bytes, decompressed)",
+        "Wrote {} ({} bytes, decompressed)",
+        cpio_path.display(),
         cpio_bytes.len()
     );
 
     let hdr_json = frame_to_json(&frame);
-    fs::write("header.json", hdr_json)?;
-    eprintln!("Wrote header.json");
+    let header_path = workspace.join("header.json");
+    fs::write(&header_path, hdr_json)?;
+    eprintln!("Wrote {}", header_path.display());
     Ok(())
 }
 
-fn repack_cmd(args: &[String]) -> io::Result<()> {
-    if args.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "repack: needs <orig_image>",
-        ));
-    }
-    let orig_path = &args[0];
-    let out_path = if args.len() >= 2 {
-        args[1].clone()
-    } else {
-        "new-ramdisk.img".to_string()
-    };
-
+pub fn repack(workspace: &Path, orig_path: &Path, out_path: &Path) -> io::Result<()> {
     let mut frame = HvbFrame::load(orig_path)?;
     let orig_payload = frame.extract_image_payload().to_vec();
 
-    // Read ramdisk.cpio from current dir
-    let cpio_bytes = fs::read("ramdisk.cpio")?;
-    eprintln!("Read ramdisk.cpio ({} bytes)", cpio_bytes.len());
+    let cpio_path = workspace.join("ramdisk.cpio");
+    let cpio_bytes = fs::read(&cpio_path)?;
+    eprintln!("Read {} ({} bytes)", cpio_path.display(), cpio_bytes.len());
 
-    rebuild_image(&mut frame, &orig_payload, &cpio_bytes, &out_path)
+    rebuild_image(&mut frame, &orig_payload, &cpio_bytes, out_path)
 }
 
-fn cpio_cmd(args: &[String]) -> io::Result<()> {
-    if args.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "cpio: needs <incpio> [cmds...]",
-        ));
-    }
-    let file = &args[0];
-    let cmds: Vec<String> = args[1..].to_vec();
-
-    let mut cpio = if Path::new(file).exists() {
-        Cpio::load_from_file(file)?
+pub fn edit_cpio(file: &Path, commands: &[String]) -> io::Result<i32> {
+    let file_str = path_str(file)?;
+    let mut cpio = if file.exists() {
+        Cpio::load_from_file(file_str)?
     } else {
         Cpio::new()
     };
 
-    for cmd in &cmds {
+    for cmd in commands {
         if cmd.starts_with('#') {
             continue;
         }
@@ -295,12 +178,12 @@ fn cpio_cmd(args: &[String]) -> io::Result<()> {
         match parts[0] {
             "test" => {
                 if cpio.exists(".backup/init_early") {
-                    std::process::exit(1);
+                    return Ok(1);
                 }
                 if cpio.exists("bin/init_early") || cpio.exists("init") {
-                    std::process::exit(0);
+                    return Ok(0);
                 }
-                std::process::exit(2);
+                return Ok(2);
             }
             "exists" => {
                 if parts.len() < 2 {
@@ -309,11 +192,7 @@ fn cpio_cmd(args: &[String]) -> io::Result<()> {
                         "exists: needs ENTRY",
                     ));
                 }
-                if cpio.exists(parts[1]) {
-                    std::process::exit(0);
-                } else {
-                    std::process::exit(1);
-                }
+                return Ok(if cpio.exists(parts[1]) { 0 } else { 1 });
             }
             "ls" => {
                 let recursive = parts.contains(&"-r");
@@ -390,27 +269,30 @@ fn cpio_cmd(args: &[String]) -> io::Result<()> {
                         "extract: needs 0 or 2 args",
                     ));
                 }
-                return Ok(());
+                return Ok(0);
             }
             other => {
                 eprintln!("WARN: unknown cpio command '{other}', skipped");
             }
         }
     }
-    cpio.dump(file)?;
+    cpio.dump(file_str)?;
+    Ok(0)
+}
+
+pub fn info(image: &Path) -> io::Result<()> {
+    let frame = HvbFrame::load(image)?;
+    print_frame_summary(&frame);
     Ok(())
 }
 
-fn info_cmd(args: &[String]) -> io::Result<()> {
-    if args.is_empty() {
-        return Err(io::Error::new(
+fn path_str(path: &Path) -> io::Result<&str> {
+    path.to_str().ok_or_else(|| {
+        io::Error::new(
             io::ErrorKind::InvalidInput,
-            "info: needs <image>",
-        ));
-    }
-    let frame = HvbFrame::load(&args[0])?;
-    print_frame_summary(&frame);
-    Ok(())
+            format!("path is not valid UTF-8: {}", path.display()),
+        )
+    })
 }
 
 fn print_frame_summary(frame: &HvbFrame) {

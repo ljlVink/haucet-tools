@@ -1,4 +1,4 @@
-use crate::formats::harmony::{
+use super::harmony::{
     HVB_CERT_MAGIC, HVB_FOOTER_MAGIC, HVB_FOOTER_SIZE, HvbCert, HvbFooter,
 };
 use sha2::{Digest, Sha256};

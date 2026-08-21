@@ -7,8 +7,6 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
-const RAMDISK_PROGRAM: &str = "haucet-tools ramdisk";
-
 pub(crate) struct Job {
     pub(crate) operation: Operation,
     pub(crate) layout: LayoutChoice,
@@ -71,39 +69,24 @@ pub(crate) fn run(job: Job) -> Result<String> {
         Operation::RamdiskUnpack => {
             let output = required_output(&job)?;
             prepare_output_dir(&output, job.force)?;
-            run_ramdisk_in(
-                &output,
-                "unpack",
-                vec![canonical_path(&input)?.display().to_string()],
-            )?;
+            let input = canonical_path(&input)?;
+            ramdisk::unpack(&input, &output)?;
             finish_unpack(&output, job.skip_chown)?;
             Ok(format!("Unpacked ramdisk into {}", output.display()))
         }
         Operation::RamdiskRepack => {
             let output = required_output(&job)?;
-            run_ramdisk_in(
-                &input,
-                "repack",
-                vec![
-                    canonical_path(&required_path(&job.secondary, "Original image")?)?
-                        .display()
-                        .to_string(),
-                    absolute_output(&output)?.display().to_string(),
-                ],
-            )?;
+            let original = canonical_path(&required_path(&job.secondary, "Original image")?)?;
+            let output_path = absolute_output(&output)?;
+            ramdisk::repack(&input, &original, &output_path)?;
             Ok(format!("Repacked ramdisk image to {}", output.display()))
         }
         Operation::RamdiskPatch => {
             let output = required_output(&job)?;
-            run_ramdisk(
-                "ramdiskpatch",
-                vec![
-                    input.display().to_string(),
-                    required_path(&job.secondary, "Replacement binary")?
-                        .display()
-                        .to_string(),
-                    absolute_output(&output)?.display().to_string(),
-                ],
+            ramdisk::patch(
+                &input,
+                &required_path(&job.secondary, "Replacement binary")?,
+                &absolute_output(&output)?,
             )?;
             Ok(format!("Patched ramdisk image to {}", output.display()))
         }
@@ -133,19 +116,6 @@ fn format_update_list(input: &Path, layout: UpdateLayout) -> Result<String> {
         ));
     }
     Ok(report)
-}
-
-fn run_ramdisk_in(directory: &Path, action: &str, arguments: Vec<String>) -> Result<()> {
-    let _working_directory = workspace::WorkingDirectory::enter(directory)?;
-    run_ramdisk(action, arguments)
-}
-
-fn run_ramdisk(action: &str, arguments: Vec<String>) -> Result<()> {
-    let mut args = vec![RAMDISK_PROGRAM.to_owned(), action.to_owned()];
-    args.extend(arguments);
-    let code = ramdisk::run(&args);
-    ensure!(code == 0, "ramdisk command exited with status {code}");
-    Ok(())
 }
 
 fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {

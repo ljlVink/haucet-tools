@@ -1,30 +1,11 @@
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, ensure};
 use std::ffi::CString;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
-
-pub struct WorkingDirectory {
-    original: PathBuf,
-}
-
-impl WorkingDirectory {
-    pub fn enter(directory: &Path) -> Result<Self> {
-        let original = std::env::current_dir()?;
-        std::env::set_current_dir(directory)
-            .with_context(|| format!("entering workspace {}", directory.display()))?;
-        Ok(Self { original })
-    }
-}
-
-impl Drop for WorkingDirectory {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
-}
 
 pub fn make_invoking_user_writable(path: &Path) -> Result<()> {
     make_invoking_user_writable_impl(path)
@@ -91,13 +72,10 @@ fn normalize_entry(path: &Path, uid: libc::uid_t, gid: libc::gid_t, chown: bool)
         ensure!(!path_bytes.contains(&0), "path contains a NUL byte");
         let path_c = CString::new(path_bytes).expect("NUL byte was checked");
         let result = unsafe { libc::lchown(path_c.as_ptr(), uid, gid) };
-        if result == 0 {
-            return Ok(())
-        } else {
+        if result != 0 {
             return Err(std::io::Error::last_os_error())
-                .with_context(|| format!("changing extracted path owner {}", path.display()))
+                .with_context(|| format!("changing extracted path owner {}", path.display()));
         }
-
     }
 
     if metadata.file_type().is_symlink() {

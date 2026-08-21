@@ -13,8 +13,8 @@ sudo haucet-tools unpack update_full_base.zip --out work --all-erofs
 sudo haucet-tools erofs unpack system.img --out system-work
 haucet-tools erofs repack system-work --output new-system.img
 haucet-tools ramdisk info ramdisk.img
-haucet-tools ramdisk unpack ramdisk.img
-haucet-tools ramdisk repack ramdisk.img new-ramdisk.img
+haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
+haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
 haucet-tools ramdisk rvt rvt.img
 haucet-tools ramdisk cpio ramdisk.cpio "ls -r /"
 ```
