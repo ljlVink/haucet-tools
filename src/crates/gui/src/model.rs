@@ -1,4 +1,4 @@
-use common::update_bin::UpdateLayout;
+use common::formats::update_bin::UpdateLayout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Operation {

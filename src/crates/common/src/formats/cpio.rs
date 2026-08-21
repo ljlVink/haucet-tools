@@ -1,5 +1,5 @@
+use super::header::FileFormat;
 use crate::compress::{get_decoder, get_encoder};
-use crate::format::FileFormat;
 use bytemuck::{Pod, Zeroable, from_bytes};
 mod test_helper_unused {
     #[allow(dead_code)]

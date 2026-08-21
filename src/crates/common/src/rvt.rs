@@ -1,4 +1,6 @@
-use crate::harmony::{HVB_CERT_MAGIC, HVB_FOOTER_MAGIC, HVB_FOOTER_SIZE, HvbCert, HvbFooter};
+use crate::formats::harmony::{
+    HVB_CERT_MAGIC, HVB_FOOTER_MAGIC, HVB_FOOTER_SIZE, HvbCert, HvbFooter,
+};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;

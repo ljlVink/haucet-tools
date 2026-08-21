@@ -1,12 +1,7 @@
 pub mod compress;
-pub mod cpio;
-pub mod erofs;
-pub mod format;
-mod harmony;
-pub mod hvb;
+pub mod formats;
 pub mod package;
 pub mod ramdisk;
 pub mod rvt;
 pub mod tools;
-pub mod update_bin;
 pub mod workspace;

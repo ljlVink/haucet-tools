@@ -1,8 +1,8 @@
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
+use common::formats::update_bin::{self, UpdateLayout};
 use common::tools::ToolPaths;
-use common::update_bin::{self, UpdateLayout};
-use common::{erofs, package, workspace};
+use common::{formats::erofs, package, workspace};
 use std::path::PathBuf;
 
 const ANSI_RED: &str = "\x1b[31m";

@@ -1,6 +1,7 @@
-use crate::erofs;
+use crate::formats::erofs;
+use crate::formats::harmony::HARMONY_MAGIC;
+use crate::formats::update_bin::{self, Component, UpdateLayout};
 use crate::tools::ToolPaths;
-use crate::update_bin::{self, Component, UpdateLayout};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -11,8 +12,6 @@ use std::path::{Component as PathComponent, Path};
 use zip::ZipArchive;
 
 const PACKAGE_MANIFEST: &str = "haucet-package.json";
-const HARMONY_MAGIC: &[u8; 8] = b"HARMONY!";
-
 #[derive(Debug, Serialize, Deserialize)]
 struct PackageManifest {
     version: u32,

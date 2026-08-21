@@ -1,4 +1,4 @@
-use crate::hvb::{HvbFooter, HvbWrapper};
+use super::hvb::{HvbFooter, HvbWrapper};
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};

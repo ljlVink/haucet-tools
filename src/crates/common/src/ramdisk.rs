@@ -1,9 +1,9 @@
 //! Commands for unpacking, repacking, inspecting, and patching ramdisk images.
 
 use crate::compress::{compress_vec, decompress_vec};
-use crate::cpio::Cpio;
-use crate::format::{FileFormat, check_fmt};
-use crate::harmony::HvbFrame;
+use crate::formats::cpio::Cpio;
+use crate::formats::harmony::HvbFrame;
+use crate::formats::header::{FileFormat, check_fmt};
 use crate::rvt;
 use std::fs;
 use std::io;

@@ -1,8 +1,8 @@
 use crate::model::{LayoutChoice, Operation};
 use anyhow::{Context, Result, ensure};
+use common::formats::update_bin::{self, UpdateLayout};
 use common::tools::ToolPaths;
-use common::update_bin::{self, UpdateLayout};
-use common::{erofs, package, ramdisk, workspace};
+use common::{formats::erofs, package, ramdisk, workspace};
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};

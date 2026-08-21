@@ -1,3 +1,5 @@
+//! File-format detection based on header magic bytes.
+
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 

@@ -1,4 +1,4 @@
-use crate::format::FileFormat;
+use crate::formats::header::FileFormat;
 use bzip2::Compression as BzCompression;
 use bzip2::read::BzDecoder;
 use bzip2::write::BzEncoder;
