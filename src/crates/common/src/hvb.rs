@@ -1,6 +1,3 @@
-// Streaming HVB support is implemented separately from ramdisk-tools because
-// Huawei EROFS partitions can be several gigabytes and must not be buffered.
-
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};

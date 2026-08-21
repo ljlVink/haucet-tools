@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::{Component as PathComponent, Path, PathBuf};
+use std::path::{Component as PathComponent, Path};
 use zip::ZipArchive;
 
 const PACKAGE_MANIFEST: &str = "haucet-package.json";
@@ -268,36 +268,16 @@ fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
     let image = image
         .canonicalize()
         .with_context(|| format!("resolving ramdisk image {}", image.display()))?;
-    let _working_directory = WorkingDirectory::enter(workspace)?;
+    let _working_directory = crate::workspace::WorkingDirectory::enter(workspace)?;
     let args = vec![
-        "ramdisk-tools".to_owned(),
+        "haucet-tools ramdisk".to_owned(),
         "unpack".to_owned(),
         image.to_string_lossy().into_owned(),
     ];
-    let code = ramdisk_tools::cli::run(&args);
-    ensure!(code == 0, "ramdisk-tools failed for {}", image.display());
+    let code = crate::ramdisk::run(&args);
+    ensure!(code == 0, "ramdisk command failed for {}", image.display());
     Ok(())
 }
-
-struct WorkingDirectory {
-    original: PathBuf,
-}
-
-impl WorkingDirectory {
-    fn enter(directory: &Path) -> Result<Self> {
-        let original = std::env::current_dir()?;
-        std::env::set_current_dir(directory)
-            .with_context(|| format!("entering ramdisk workspace {}", directory.display()))?;
-        Ok(Self { original })
-    }
-}
-
-impl Drop for WorkingDirectory {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
-}
-
 fn validate_partition_name(name: &str) -> Result<()> {
     let mut parts = Path::new(name).components();
     ensure!(

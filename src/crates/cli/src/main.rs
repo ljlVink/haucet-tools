@@ -1,11 +1,13 @@
-use crate::erofs;
-use crate::package;
-use crate::tools::ToolPaths;
-use crate::update_bin::{self, UpdateLayout};
-use crate::workspace;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
+use common::tools::ToolPaths;
+use common::update_bin::{self, UpdateLayout};
+use common::{erofs, package, workspace};
 use std::path::PathBuf;
+
+const ANSI_RED: &str = "\x1b[31m";
+const ANSI_YELLOW: &str = "\x1b[33m";
+const ANSI_RESET: &str = "\x1b[0m";
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -140,13 +142,13 @@ pub fn run(cli: Cli) -> Result<()> {
             }
         }
         Command::Ramdisk { args } => {
-            let mut forwarded = vec!["ramdisk-tools".to_owned()];
+            let mut forwarded = vec!["haucet-tools ramdisk".to_owned()];
             forwarded.extend(args);
-            let code = ramdisk_tools::cli::run(&forwarded);
+            let code = common::ramdisk::run(&forwarded);
             if code == 0 {
                 Ok(())
             } else {
-                bail!("ramdisk-tools exited with status {code}")
+                bail!("ramdisk command exited with status {code}")
             }
         }
     }
@@ -157,5 +159,20 @@ fn finish_unpack(out: &std::path::Path, skip_chown: bool) -> Result<()> {
         Ok(())
     } else {
         workspace::make_invoking_user_writable(out)
+    }
+}
+
+fn main() {
+    if unsafe { libc::geteuid() == 0 } {
+        eprintln!("{ANSI_RED}You are currently in root mode, use it at risk.{ANSI_RESET}");
+    } else {
+        eprintln!(
+            "{ANSI_YELLOW}You are currently not in root mode, extract may cause permission problems.{ANSI_RESET}"
+        );
+    }
+    let main_cli = Cli::parse();
+    if let Err(error) = run(main_cli) {
+        eprintln!("error: {error:#}");
+        std::process::exit(1);
     }
 }

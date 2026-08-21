@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+description = "Command-line interface for haucet-tools"
+license.workspace = true
+
+[[bin]]
+name = "haucet-tools"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+common = { path = "../common" }
+libc.workspace = true

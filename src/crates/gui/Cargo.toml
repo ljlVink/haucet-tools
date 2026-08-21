@@ -1,0 +1,16 @@
+[package]
+name = "gui"
+version.workspace = true
+edition.workspace = true
+description = "egui desktop interface for haucet-tools"
+license.workspace = true
+
+[[bin]]
+name = "haucet-tools-gui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+common = { path = "../common" }
