@@ -99,7 +99,7 @@ impl ErofsPage {
         if workspace == self.repack.manifest_from && self.repack.manifest.is_some() {
             return;
         }
-        match common::formats::erofs::workspace_manifest(std::path::Path::new(&workspace)) {
+        match common::formats::erofs::read_manifest(std::path::Path::new(&workspace)) {
             Ok(manifest) => {
                 self.repack.manifest_error = None;
                 self.repack.manifest_from = workspace.clone();

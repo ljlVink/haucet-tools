@@ -201,7 +201,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         } => {
             let tools = discover_tools(tools_dir)?;
             erofs::unpack_with_tools(Path::new(image), Path::new(output), &tools, *force)?;
-            let manifest = erofs::workspace_manifest(Path::new(output))?;
+            let manifest = erofs::read_manifest(Path::new(output))?;
             summary_payload(
                 format!(
                     "EROFS 镜像已解包到 {}（分区 {}）",

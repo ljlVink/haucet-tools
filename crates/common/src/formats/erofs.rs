@@ -471,7 +471,7 @@ fn write_manifest(workspace: &Path, manifest: &ErofsManifest) -> Result<()> {
     })
 }
 
-fn read_manifest(workspace: &Path) -> Result<ErofsManifest> {
+pub fn read_manifest(workspace: &Path) -> Result<ErofsManifest> {
     let path = workspace.join(MANIFEST_NAME);
     let bytes = fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
     serde_json::from_slice(&bytes).context("parsing EROFS workspace manifest")
