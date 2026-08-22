@@ -119,7 +119,9 @@ pub struct LocalJob {
 
 impl std::fmt::Debug for LocalJob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LocalJob").field("label", &self.label).finish()
+        f.debug_struct("LocalJob")
+            .field("label", &self.label)
+            .finish()
     }
 }
 
@@ -146,6 +148,17 @@ fn split_path(path: &str) -> (String, String) {
         Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
         None => (String::new(), path.to_owned()),
     }
+}
+
+/// TODO REMOVE
+/// 快速判断文件是否以 HARMONY! 头开始（ramdisk 镜像）。
+fn is_harmony_image(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut head = [0_u8; 8];
+    file.read_exact(&mut head).is_ok() && &head == b"HARMONY!"
 }
 
 impl CpioPage {
@@ -227,6 +240,8 @@ impl CpioPage {
             self.path = path.display().to_string();
             if path.is_dir() {
                 self.source = CpioSource::Workspace;
+            } else if is_harmony_image(path) {
+                self.source = CpioSource::Image;
             }
             self.start_load(app);
         }
@@ -284,7 +299,11 @@ impl CpioPage {
             Ok(LocalOutcome::Loaded(loaded)) => {
                 self.message = Some((
                     true,
-                    format!("已加载 {} 个条目（来源：{}）", loaded.cpio.entries.len(), label),
+                    format!(
+                        "已加载 {} 个条目（来源：{}）",
+                        loaded.cpio.entries.len(),
+                        label
+                    ),
                 ));
                 self.loaded = Some(loaded);
             }
@@ -303,7 +322,9 @@ impl CpioPage {
             ui.label(
                 egui::RichText::new(format!(
                     "{} 个条目 · {} 个目录 · 数据 {}",
-                    count, dirs, human_size(total)
+                    count,
+                    dirs,
+                    human_size(total)
                 ))
                 .weak(),
             );
@@ -318,7 +339,11 @@ impl CpioPage {
                     egui::Color32::from_rgb(90, 200, 120),
                 );
             } else if loaded.cpio.exists("init") {
-                badge_text(ui, "原厂（init 存在）", egui::Color32::from_rgb(90, 200, 120));
+                badge_text(
+                    ui,
+                    "原厂（init 存在）",
+                    egui::Color32::from_rgb(90, 200, 120),
+                );
             } else {
                 badge_text(ui, "未知布局", egui::Color32::from_rgb(230, 170, 40));
             }
@@ -331,10 +356,10 @@ impl CpioPage {
                 ui.label(egui::RichText::new(&loaded.source_path).weak().monospace());
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("打开来源位置").clicked() {
-                    if let Some(parent) = std::path::Path::new(&loaded.source_path).parent() {
-                        open_in_file_manager(parent);
-                    }
+                if ui.button("打开来源位置").clicked()
+                    && let Some(parent) = std::path::Path::new(&loaded.source_path).parent()
+                {
+                    open_in_file_manager(parent);
                 }
             });
         });
@@ -355,10 +380,7 @@ impl CpioPage {
             if ui.button("折叠全部").clicked() {
                 self.expand = false;
             }
-            ui.label(
-                egui::RichText::new("单击选中条目 · 双击复制路径")
-                    .weak(),
-            );
+            ui.label(egui::RichText::new("单击选中条目 · 双击复制路径").weak());
         });
         ui.add_space(2.0);
 
@@ -375,8 +397,7 @@ impl CpioPage {
                     for path in loaded.cpio.entries.keys() {
                         if path.to_lowercase().contains(&filter) {
                             let selected = self.selection.as_deref() == Some(path.as_str());
-                            let response =
-                                ui.selectable_label(selected, format!("  {path}"));
+                            let response = ui.selectable_label(selected, format!("  {path}"));
                             if response.clicked() {
                                 clicked = Some(path.clone());
                             }
@@ -446,58 +467,56 @@ impl CpioPage {
             if ui
                 .add_enabled(selection.is_some(), egui::Button::new("提取选中…"))
                 .clicked()
+                && let Some(dir) = app.pick_dir("选择提取目标目录")
             {
-                if let Some(dir) = app.pick_dir("选择提取目标目录") {
-                    let entry = selection.clone().unwrap_or_default();
-                    let dir = dir.display().to_string();
-                    let snapshot = loaded.snapshot();
-                    self.message = None;
-                    self.load_job = Some(spawn_local("提取条目", move || {
-                        extract_entries(&snapshot, &[entry.clone()], &dir)?;
-                        Ok(LocalOutcome::Done(format!("已提取 {entry}")))
-                    }));
-                }
+                let entry = selection.clone().unwrap_or_default();
+                let dir = dir.display().to_string();
+                let snapshot = loaded.snapshot();
+                self.message = None;
+                self.load_job = Some(spawn_local("提取条目", move || {
+                    extract_entries(&snapshot, std::slice::from_ref(&entry), &dir)?;
+                    Ok(LocalOutcome::Done(format!("已提取 {entry}")))
+                }));
             }
-            if ui.button("提取全部…").clicked() {
-                if let Some(dir) = app.pick_dir("选择提取目标目录") {
-                    let paths = loaded.cpio.entries.keys().cloned().collect::<Vec<_>>();
-                    let dir = dir.display().to_string();
-                    let snapshot = loaded.snapshot();
-                    self.message = None;
-                    self.load_job = Some(spawn_local("提取全部", move || {
-                        let count = extract_entries(&snapshot, &paths, &dir)?;
-                        Ok(LocalOutcome::Done(format!("已提取 {count} 个条目到 {dir}")))
-                    }));
-                }
+            if ui.button("提取全部…").clicked()
+                && let Some(dir) = app.pick_dir("选择提取目标目录")
+            {
+                let paths = loaded.cpio.entries.keys().cloned().collect::<Vec<_>>();
+                let dir = dir.display().to_string();
+                let snapshot = loaded.snapshot();
+                self.message = None;
+                self.load_job = Some(spawn_local("提取全部", move || {
+                    let count = extract_entries(&snapshot, &paths, &dir)?;
+                    Ok(LocalOutcome::Done(format!("已提取 {count} 个条目到 {dir}")))
+                }));
             }
             if ui
                 .add_enabled(selection.is_some(), egui::Button::new("删除选中"))
                 .clicked()
+                && let Some(entry) = selection.clone()
             {
-                if let Some(entry) = selection.clone() {
-                    let is_dir = loaded
-                        .cpio
-                        .entries
-                        .get(&entry)
-                        .map(|entry| entry.mode & S_IFMT == S_IFDIR)
-                        .unwrap_or(false);
-                    loaded.cpio.rm(&entry, is_dir);
-                    loaded.rebuild_tree();
-                    self.selection = None;
-                    self.dirty = true;
-                    self.message = Some((true, format!("已删除 {entry}")));
-                }
+                let is_dir = loaded
+                    .cpio
+                    .entries
+                    .get(&entry)
+                    .map(|entry| entry.mode & S_IFMT == S_IFDIR)
+                    .unwrap_or(false);
+                loaded.cpio.rm(&entry, is_dir);
+                loaded.rebuild_tree();
+                self.selection = None;
+                self.dirty = true;
+                self.message = Some((true, format!("已删除 {entry}")));
             }
-            if ui.button("添加文件…").clicked() {
-                if let Some(file) = app.pick_file("选择要添加的文件", &[]) {
-                    let suggested = file
-                        .file_name()
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                    self.pending_add = Some(file.display().to_string());
-                    self.add_target = suggested;
-                    self.add_mode = "0750".to_owned();
-                }
+            if ui.button("添加文件…").clicked()
+                && let Some(file) = app.pick_file("选择要添加的文件", &[])
+            {
+                let suggested = file
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.pending_add = Some(file.display().to_string());
+                self.add_target = suggested;
+                self.add_mode = "0750".to_owned();
             }
             if ui.button("新建目录").clicked() {
                 self.mkdir_target = "new/dir".to_owned();
@@ -517,9 +536,7 @@ impl CpioPage {
                                 .desired_width(240.0),
                         );
                         ui.label("模式");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.add_mode).desired_width(64.0),
-                        );
+                        ui.add(egui::TextEdit::singleline(&mut self.add_mode).desired_width(64.0));
                         if ui.button("确认添加").clicked() {
                             let mode = cpio::parse_cpio_mode(self.add_mode.trim());
                             let target = self.add_target.trim().to_owned();
@@ -529,14 +546,13 @@ impl CpioPage {
                                         Ok(()) => {
                                             loaded.rebuild_tree();
                                             self.dirty = true;
-                                            self.message = Some((
-                                                true,
-                                                format!("已添加 {file} → {target}"),
-                                            ));
+                                            self.message =
+                                                Some((true, format!("已添加 {file} → {target}")));
                                             self.pending_add = None;
                                         }
                                         Err(error) => {
-                                            self.message = Some((false, format!("添加失败：{error}")));
+                                            self.message =
+                                                Some((false, format!("添加失败：{error}")));
                                         }
                                     }
                                 }
@@ -584,7 +600,10 @@ impl CpioPage {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(!loaded.from_image && self.dirty, egui::Button::new("保存修改"))
+                .add_enabled(
+                    !loaded.from_image && self.dirty,
+                    egui::Button::new("保存修改"),
+                )
                 .on_hover_text("写回当前来源文件")
                 .clicked()
             {
@@ -599,24 +618,26 @@ impl CpioPage {
                 }));
                 self.dirty = false;
             }
-            if ui.button("另存为…").clicked() {
-                if let Some(path) = app.pick_save("保存 cpio 文件", "ramdisk.cpio") {
-                    let path = path.display().to_string();
-                    let snapshot = loaded.snapshot();
-                    self.message = None;
-                    self.load_job = Some(spawn_local("另存为", move || {
-                        let mut bytes = Vec::new();
-                        snapshot.dump_to(&mut bytes)?;
-                        std::fs::write(&path, bytes)?;
-                        Ok(LocalOutcome::Done(format!("已保存到 {path}")))
-                    }));
-                    self.dirty = false;
-                }
+            if ui.button("另存为…").clicked()
+                && let Some(path) = app.pick_save("保存 cpio 文件", "ramdisk.cpio")
+            {
+                let path = path.display().to_string();
+                let snapshot = loaded.snapshot();
+                self.message = None;
+                self.load_job = Some(spawn_local("另存为", move || {
+                    let mut bytes = Vec::new();
+                    snapshot.dump_to(&mut bytes)?;
+                    std::fs::write(&path, bytes)?;
+                    Ok(LocalOutcome::Done(format!("已保存到 {path}")))
+                }));
+                self.dirty = false;
             }
             if loaded.from_image {
                 ui.label(
-                    egui::RichText::new("内容来自镜像：修改后请“另存为”cpio，再到 Ramdisk 页重新打包")
-                        .weak(),
+                    egui::RichText::new(
+                        "内容来自镜像：修改后请“另存为”cpio，再到 Ramdisk 页重新打包",
+                    )
+                    .weak(),
                 );
             }
         });
@@ -639,24 +660,18 @@ impl CpioPage {
                     .spacing([16.0, 4.0])
                     .show(ui, |ui| {
                         crate::util::kv(ui, "权限", mode_string(entry.mode));
-                        crate::util::kv(
-                            ui,
-                            "uid / gid",
-                            format!("{} / {}", entry.uid, entry.gid),
-                        );
+                        crate::util::kv(ui, "uid / gid", format!("{} / {}", entry.uid, entry.gid));
                         crate::util::kv(ui, "大小", human_size(entry.data.len() as u64));
                     });
             });
     }
 }
 
-/// Extract a list of entries into `dir`, mirroring the CLI's semantics.
 fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<usize> {
     let mut count = 0;
     for path in paths {
         let output = format!("{dir}/{path}");
-        cpio
-            .extract_entry(path, &output)
+        cpio.extract_entry(path, &output)
             .map_err(|error| anyhow::anyhow!("提取 {path} 失败：{error}"))?;
         count += 1;
     }

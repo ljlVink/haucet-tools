@@ -81,7 +81,11 @@ impl PackagePage {
                                     .selected_text(self.layout.label())
                                     .show_ui(ui, |ui| {
                                         for layout in LayoutChoice::ALL {
-                                            ui.selectable_value(&mut self.layout, layout, layout.label());
+                                            ui.selectable_value(
+                                                &mut self.layout,
+                                                layout,
+                                                layout.label(),
+                                            );
                                         }
                                     });
                                 ui.end_row();
@@ -92,17 +96,19 @@ impl PackagePage {
                                             .hint_text("留空则自动查找 bin/")
                                             .desired_width(300.0),
                                     );
-                                    if ui.button("浏览…").clicked() {
-                                        if let Some(dir) = app.pick_dir("选择 EROFS 工具目录") {
-                                            self.tools_dir = dir.display().to_string();
-                                        }
+                                    if ui.button("浏览…").clicked()
+                                        && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
+                                    {
+                                        self.tools_dir = dir.display().to_string();
                                     }
                                 });
                                 ui.end_row();
                                 ui.label("自定义分区");
                                 ui.add(
                                     egui::TextEdit::singleline(&mut self.custom_partitions)
-                                        .hint_text("可选：逗号分隔，如 system, vendor；留空则使用下方勾选")
+                                        .hint_text(
+                                            "可选：逗号分隔，如 system, vendor；留空则使用下方勾选",
+                                        )
                                         .desired_width(380.0),
                                 );
                                 ui.end_row();
@@ -126,14 +132,7 @@ impl PackagePage {
 
                 ui.add_space(10.0);
                 section(ui, "输出");
-                path_row(
-                    ui,
-                    app,
-                    "输出目录",
-                    &mut self.output,
-                    "选择目录",
-                    None,
-                );
+                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let ready = !app.job_running()
@@ -176,23 +175,27 @@ impl PackagePage {
             });
             return;
         }
-        if let Some(payload) = result.payload {
-            if let Ok(index) = serde_json::from_value::<PackageIndex>(payload) {
-                // 读取包内容成功
-                let image_count = index.components.iter().filter(|c| c.component_type == 0).count();
-                self.checked = index
-                    .components
-                    .iter()
-                    .map(|component| component.component_type == 0)
-                    .collect();
-                self.inspect_message = Some(format!(
-                    "包内共 {} 个组件（其中 {} 个分区镜像），已自动勾选全部镜像分区；其余文件会解包到 package/ 目录。",
-                    index.components.len(),
-                    image_count
-                ));
-                self.index = Some(index);
-                return;
-            }
+        if let Some(payload) = result.payload
+            && let Ok(index) = serde_json::from_value::<PackageIndex>(payload)
+        {
+            // 读取包内容成功
+            let image_count = index
+                .components
+                .iter()
+                .filter(|c| c.component_type == 0)
+                .count();
+            self.checked = index
+                .components
+                .iter()
+                .map(|component| component.component_type == 0)
+                .collect();
+            self.inspect_message = Some(format!(
+                "包内共 {} 个组件（其中 {} 个分区镜像），已自动勾选全部镜像分区；其余文件会解包到 package/ 目录。",
+                index.components.len(),
+                image_count
+            ));
+            self.index = Some(index);
+            return;
         }
         self.result = Some(ResultView {
             ok: true,
@@ -312,9 +315,7 @@ impl PackagePage {
         ui.add_space(6.0);
         if result.ok {
             message_box(ui, egui::Color32::from_rgb(90, 200, 120), &result.summary);
-            if !result.output.is_empty()
-                && ui.button("打开输出目录").clicked()
-            {
+            if !result.output.is_empty() && ui.button("打开输出目录").clicked() {
                 open_in_file_manager(std::path::Path::new(&result.output));
             }
         } else {

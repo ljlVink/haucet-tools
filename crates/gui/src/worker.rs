@@ -1,11 +1,3 @@
-//! Shared job protocol between the GUI and its worker child process.
-//!
-//! The GUI spawns its own executable with [`WORKER_ENV`] set, feeds a
-//! [`JobSpec`] as JSON on stdin, and reads newline-delimited JSON events on
-//! stdout: `{"t":"log","s":...}` lines while working and a final
-//! `{"t":"result",...}` line. Everything the library prints to stderr is
-//! forwarded verbatim by the parent as log lines.
-
 use anyhow::{Context, Result, ensure};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::formats::{cpio, erofs, header::check_fmt};
@@ -21,8 +13,10 @@ pub const WORKER_ENV: &str = "HAUCET_GUI_WORKER";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum JobOp {
-    /// List the update.bin components inside an update_full_base.zip.
-    PackageInspect { input: String, layout: String },
+    PackageInspect {
+        input: String,
+        layout: String,
+    },
     PackageUnpack {
         input: String,
         output: String,
@@ -32,7 +26,10 @@ pub enum JobOp {
         force: bool,
         tools_dir: Option<String>,
     },
-    UpdateList { input: String, layout: String },
+    UpdateList {
+        input: String,
+        layout: String,
+    },
     UpdateUnpack {
         input: String,
         output: String,
@@ -52,16 +49,27 @@ pub enum JobOp {
         allow_grow: bool,
         tools_dir: Option<String>,
     },
-    RamdiskUnpack { image: String, output: String, force: bool },
+    RamdiskUnpack {
+        image: String,
+        output: String,
+        force: bool,
+    },
     RamdiskRepack {
         workspace: String,
         original: String,
         output: String,
     },
-    RamdiskPatch { image: String, binary: String, output: String },
-    /// Pre-flight check of a ramdisk image: patch state and payload sizes.
-    RamdiskProbe { image: String },
-    PartitionInfo { image: String },
+    RamdiskPatch {
+        image: String,
+        binary: String,
+        output: String,
+    },
+    RamdiskProbe {
+        image: String,
+    },
+    PartitionInfo {
+        image: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,8 +88,6 @@ pub fn is_worker_mode() -> bool {
     std::env::var_os(WORKER_ENV).is_some()
 }
 
-/// Entry point of the worker child: read one job from stdin, run it, print
-/// the result as a single JSON line on stdout, then exit 0.
 pub fn run_worker() -> i32 {
     let mut input = String::new();
     let read = std::io::stdin().read_to_string(&mut input);
@@ -145,8 +151,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             })
         }
         JobOp::UpdateList { input, layout } => {
-            let file = fs::File::open(input)
-                .with_context(|| format!("打开 {}", input))?;
+            let file = fs::File::open(input).with_context(|| format!("打开 {}", input))?;
             let length = file.metadata()?.len();
             let index = update_bin::read_index(
                 &mut std::io::BufReader::new(file),
@@ -217,12 +222,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             tools_dir,
         } => {
             let tools = discover_tools(tools_dir)?;
-            erofs::repack_with_tools(
-                Path::new(workspace),
-                Path::new(output),
-                &tools,
-                *allow_grow,
-            )?;
+            erofs::repack_with_tools(Path::new(workspace), Path::new(output), &tools, *allow_grow)?;
             Ok(WorkerResult {
                 ok: true,
                 summary: format!("已重新打包 EROFS 镜像到 {output}"),
@@ -296,9 +296,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 partition::PartitionSummary::Rvt(info) => {
                     format!("RVT 密钥镜像（{} 个描述符）", info.descriptors.len())
                 }
-                partition::PartitionSummary::HvbWrapped { .. } => {
-                    "HVB 包装的分区镜像".to_owned()
-                }
+                partition::PartitionSummary::HvbWrapped { .. } => "HVB 包装的分区镜像".to_owned(),
             };
             summary_payload(label, summary)
         }
@@ -312,8 +310,7 @@ fn probe_ramdisk(image: &Path) -> Result<serde_json::Value> {
     ensure!(!payload.is_empty(), "镜像内没有负载数据");
     let fmt = check_fmt(payload);
     let cpio_bytes = if fmt.is_compressed() {
-        common::compress::decompress_vec(fmt, payload)
-            .map_err(std::io::Error::other)?
+        common::compress::decompress_vec(fmt, payload).map_err(std::io::Error::other)?
     } else {
         payload.to_vec()
     };
@@ -365,8 +362,7 @@ fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
         fs::remove_dir_all(output)
             .with_context(|| format!("删除旧输出目录 {}", output.display()))?;
     }
-    fs::create_dir_all(output)
-        .with_context(|| format!("创建输出目录 {}", output.display()))
+    fs::create_dir_all(output).with_context(|| format!("创建输出目录 {}", output.display()))
 }
 
 fn canonical_path(path: &Path) -> Result<PathBuf> {

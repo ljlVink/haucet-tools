@@ -99,7 +99,10 @@ fn detect_dir(path: &Path) -> (FileKind, String) {
             "这是 ramdisk 解包工作区，可以直接重新打包镜像".to_owned(),
         )
     } else {
-        (FileKind::Unknown, "目录中没有识别到 haucet 工作区".to_owned())
+        (
+            FileKind::Unknown,
+            "目录中没有识别到 haucet 工作区".to_owned(),
+        )
     }
 }
 
@@ -137,7 +140,10 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         {
             return (
                 FileKind::UpdateBin,
-                format!("这是 update.bin 组件包（{} 个分区），可以查看和解包分区", compinfo_len / 71),
+                format!(
+                    "这是 update.bin 组件包（{} 个分区），可以查看和解包分区",
+                    compinfo_len / 71
+                ),
             );
         }
     }
@@ -154,7 +160,8 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     if head_len >= 8 && &head[0..8] == HARMONY_MAGIC {
         return (
             FileKind::HarmonyFrame,
-            "这是 HARMONY! 包装的镜像（ramdisk 或分区），可以做 ramdisk 操作或查看分区信息".to_owned(),
+            "这是 HARMONY! 包装的镜像（ramdisk 或分区），可以做 ramdisk 操作或查看分区信息"
+                .to_owned(),
         );
     }
 

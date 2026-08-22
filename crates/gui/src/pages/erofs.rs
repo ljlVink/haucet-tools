@@ -72,10 +72,10 @@ impl ErofsPage {
             });
             return;
         }
-        if let Some(payload) = result.payload {
-            if let Ok(manifest) = serde_json::from_value::<ErofsManifest>(payload) {
-                self.repack.manifest = Some(manifest);
-            }
+        if let Some(payload) = result.payload
+            && let Ok(manifest) = serde_json::from_value::<ErofsManifest>(payload)
+        {
+            self.repack.manifest = Some(manifest);
         }
         self.result = Some(ResultView {
             ok: true,
@@ -126,12 +126,12 @@ impl ErofsPage {
                     .hint_text("分区镜像或拖放文件到这里")
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择文件…").clicked() {
-                if let Some(path) = app.pick_file("选择 EROFS 镜像", &[("镜像", &["img"])]) {
-                    self.unpack.image = path.display().to_string();
-                    if self.unpack.output.trim().is_empty() {
-                        self.unpack.output = default_workspace(&self.unpack.image);
-                    }
+            if ui.button("选择文件…").clicked()
+                && let Some(path) = app.pick_file("选择 EROFS 镜像", &[("镜像", &["img"])])
+            {
+                self.unpack.image = path.display().to_string();
+                if self.unpack.output.trim().is_empty() {
+                    self.unpack.output = default_workspace(&self.unpack.image);
                 }
             }
         });
@@ -149,10 +149,10 @@ impl ErofsPage {
                 egui::TextEdit::singleline(&mut self.unpack.output)
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked() {
-                if let Some(dir) = app.pick_dir("选择输出目录") {
-                    self.unpack.output = dir.display().to_string();
-                }
+            if ui.button("选择目录…").clicked()
+                && let Some(dir) = app.pick_dir("选择输出目录")
+            {
+                self.unpack.output = dir.display().to_string();
             }
         });
         ui.add_space(6.0);
@@ -164,10 +164,10 @@ impl ErofsPage {
                     .hint_text("留空自动查找")
                     .desired_width(180.0),
             );
-            if ui.button("浏览…").clicked() {
-                if let Some(dir) = app.pick_dir("选择 EROFS 工具目录") {
-                    self.unpack.tools_dir = dir.display().to_string();
-                }
+            if ui.button("浏览…").clicked()
+                && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
+            {
+                self.unpack.tools_dir = dir.display().to_string();
             }
         });
         ui.add_space(8.0);
@@ -186,8 +186,7 @@ impl ErofsPage {
 
     fn repack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把解包出来的工作区重新打包成分区镜像（保留原 HVB 证书）")
-                .weak(),
+            egui::RichText::new("把解包出来的工作区重新打包成分区镜像（保留原 HVB 证书）").weak(),
         );
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -197,19 +196,19 @@ impl ErofsPage {
                     .hint_text("包含 haucet-erofs.json 的目录")
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked() {
-                if let Some(dir) = app.pick_dir("选择 EROFS 工作区") {
-                    self.repack.workspace = dir.display().to_string();
-                    self.repack.manifest = None;
-                }
+            if ui.button("选择目录…").clicked()
+                && let Some(dir) = app.pick_dir("选择 EROFS 工作区")
+            {
+                self.repack.workspace = dir.display().to_string();
+                self.repack.manifest = None;
             }
         });
         let drops = app.take_drops(ui.ctx());
-        if let Some(path) = drops.first() {
-            if path.is_dir() {
-                self.repack.workspace = path.display().to_string();
-                self.repack.manifest = None;
-            }
+        if let Some(path) = drops.first()
+            && path.is_dir()
+        {
+            self.repack.workspace = path.display().to_string();
+            self.repack.manifest = None;
         }
         ui.add_space(6.0);
         if let Some(manifest) = &self.repack.manifest {
@@ -242,7 +241,8 @@ impl ErofsPage {
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
                 "注意：重新打包不会重新签名 HVB 证书。设备安全启动（secure boot）可能拒绝新镜像，"
-                    .to_owned() + "即使文件结构完全合法。",
+                    .to_owned()
+                    + "即使文件结构完全合法。",
             );
         } else if let Some(error) = &self.repack.manifest_error {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
@@ -255,10 +255,10 @@ impl ErofsPage {
                     .hint_text("例如 new-system.img")
                     .desired_width(ui.available_width() - 260.0),
             );
-            if ui.button("选择保存位置…").clicked() {
-                if let Some(path) = app.pick_save("保存打包后的镜像", "new-partition.img") {
-                    self.repack.output = path.display().to_string();
-                }
+            if ui.button("选择保存位置…").clicked()
+                && let Some(path) = app.pick_save("保存打包后的镜像", "new-partition.img")
+            {
+                self.repack.output = path.display().to_string();
             }
         });
         ui.add_space(6.0);
@@ -270,10 +270,10 @@ impl ErofsPage {
                     .hint_text("留空自动查找")
                     .desired_width(180.0),
             );
-            if ui.button("浏览…").clicked() {
-                if let Some(dir) = app.pick_dir("选择 EROFS 工具目录") {
-                    self.repack.tools_dir = dir.display().to_string();
-                }
+            if ui.button("浏览…").clicked()
+                && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
+            {
+                self.repack.tools_dir = dir.display().to_string();
             }
         });
         ui.add_space(8.0);
@@ -281,7 +281,8 @@ impl ErofsPage {
             && !self.repack.workspace.trim().is_empty()
             && !self.repack.output.trim().is_empty()
             && self.repack.manifest.is_some();
-        if run_button(ui, "重新打包", ready, Some("需要先选择有效的工作区")).clicked() {
+        if run_button(ui, "重新打包", ready, Some("需要先选择有效的工作区")).clicked()
+        {
             app.start_job(crate::worker::JobOp::ErofsRepack {
                 workspace: self.repack.workspace.trim().to_owned(),
                 output: self.repack.output.trim().to_owned(),

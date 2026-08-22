@@ -104,11 +104,8 @@ impl HaucetApp {
     fn poll_job(&mut self) {
         let mut events = Vec::new();
         if let Some(job) = &mut self.job {
-            loop {
-                match job.poll() {
-                    Some(event) => events.push(event),
-                    None => break,
-                }
+            while let Some(event) = job.poll() {
+                events.push(event);
             }
         }
         let mut finished = false;

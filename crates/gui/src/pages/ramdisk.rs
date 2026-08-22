@@ -79,13 +79,12 @@ impl RamdiskPage {
         let Some(result) = app.take_result(Page::Ramdisk) else {
             return;
         };
-        // RamdiskProbe 预检结果直接交给打补丁页展示，不进入任务结果区。
-        if let Some(payload) = result.payload {
-            if let Ok(probe) = serde_json::from_value::<ProbeInfo>(payload) {
-                self.patch.probe = Some(probe);
-                self.patch.probe_error = None;
-                return;
-            }
+        if let Some(payload) = result.payload
+            && let Ok(probe) = serde_json::from_value::<ProbeInfo>(payload)
+        {
+            self.patch.probe = Some(probe);
+            self.patch.probe_error = None;
+            return;
         }
         if !result.ok && self.patch.probe.is_none() {
             self.patch.probe_error = Some(result.summary.clone());
@@ -108,8 +107,10 @@ impl RamdiskPage {
 
     fn unpack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把 HARMONY! ramdisk 镜像解成 ramdisk.bin / ramdisk.cpio / header.json 工作区")
-                .weak(),
+            egui::RichText::new(
+                "把 HARMONY! ramdisk 镜像解成 ramdisk.bin / ramdisk.cpio / header.json 工作区",
+            )
+            .weak(),
         );
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -119,10 +120,10 @@ impl RamdiskPage {
                     .hint_text("ramdisk 镜像或拖放文件到这里")
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择文件…").clicked() {
-                if let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])]) {
-                    self.unpack.image = path.display().to_string();
-                }
+            if ui.button("选择文件…").clicked()
+                && let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])])
+            {
+                self.unpack.image = path.display().to_string();
             }
         });
         self.handle_drops(ui, app);
@@ -133,10 +134,10 @@ impl RamdiskPage {
                 egui::TextEdit::singleline(&mut self.unpack.output)
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked() {
-                if let Some(dir) = app.pick_dir("选择输出目录") {
-                    self.unpack.output = dir.display().to_string();
-                }
+            if ui.button("选择目录…").clicked()
+                && let Some(dir) = app.pick_dir("选择输出目录")
+            {
+                self.unpack.output = dir.display().to_string();
             }
             ui.checkbox(&mut self.unpack.force, "覆盖已存在目录");
         });
@@ -155,15 +156,38 @@ impl RamdiskPage {
 
     fn repack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("用解包工作区里的 ramdisk.cpio 重建镜像（需要原始镜像以保留 HVB 头）")
-                .weak(),
+            egui::RichText::new(
+                "用解包工作区里的 ramdisk.cpio 重建镜像（需要原始镜像以保留 HVB 头）",
+            )
+            .weak(),
         );
         ui.add_space(6.0);
-        path_edit(ui, app, "工作区目录", &mut self.repack.workspace, true, "选择目录…");
+        path_edit(
+            ui,
+            app,
+            "工作区目录",
+            &mut self.repack.workspace,
+            true,
+            "选择目录…",
+        );
         ui.add_space(6.0);
-        path_edit(ui, app, "原始镜像", &mut self.repack.original, false, "选择文件…");
+        path_edit(
+            ui,
+            app,
+            "原始镜像",
+            &mut self.repack.original,
+            false,
+            "选择文件…",
+        );
         ui.add_space(6.0);
-        path_edit(ui, app, "输出镜像", &mut self.repack.output, false, "选择保存位置…");
+        path_edit(
+            ui,
+            app,
+            "输出镜像",
+            &mut self.repack.output,
+            false,
+            "选择保存位置…",
+        );
         ui.add_space(8.0);
         let ready = !app.job_running()
             && !self.repack.workspace.trim().is_empty()
@@ -180,8 +204,7 @@ impl RamdiskPage {
 
     fn patch_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把自制的 init_early 二进制替换进 ramdisk，并自动腾出空间")
-                .weak(),
+            egui::RichText::new("把自制的 init_early 二进制替换进 ramdisk，并自动腾出空间").weak(),
         );
         ui.add_space(4.0);
         message_box(
@@ -198,18 +221,18 @@ impl RamdiskPage {
                     .hint_text("原始 ramdisk 镜像")
                     .desired_width(ui.available_width() - 260.0),
             );
-            if ui.button("选择文件…").clicked() {
-                if let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])]) {
-                    self.patch.image = path.display().to_string();
-                    self.patch.probe = None;
-                    self.patch.probe_error = None;
-                    if self.patch.output.trim().is_empty() {
-                        self.patch.output = default_patched(&self.patch.image);
-                    }
-                    app.start_job(crate::worker::JobOp::RamdiskProbe {
-                        image: self.patch.image.trim().to_owned(),
-                    });
+            if ui.button("选择文件…").clicked()
+                && let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])])
+            {
+                self.patch.image = path.display().to_string();
+                self.patch.probe = None;
+                self.patch.probe_error = None;
+                if self.patch.output.trim().is_empty() {
+                    self.patch.output = default_patched(&self.patch.image);
                 }
+                app.start_job(crate::worker::JobOp::RamdiskProbe {
+                    image: self.patch.image.trim().to_owned(),
+                });
             }
         });
         let drops = app.take_drops(ui.ctx());
@@ -234,9 +257,15 @@ impl RamdiskPage {
                         ui.label(egui::RichText::new("补丁状态").strong());
                         if probe.patched {
                             badge_text(ui, "已打过补丁", egui::Color32::from_rgb(230, 170, 40));
-                            ui.label(egui::RichText::new("再次打补丁会失败，请使用原厂镜像").weak());
+                            ui.label(
+                                egui::RichText::new("再次打补丁会失败，请使用原厂镜像").weak(),
+                            );
                         } else if probe.layout_known {
-                            badge_text(ui, "原厂镜像，可以打补丁", egui::Color32::from_rgb(90, 200, 120));
+                            badge_text(
+                                ui,
+                                "原厂镜像，可以打补丁",
+                                egui::Color32::from_rgb(90, 200, 120),
+                            );
                         } else {
                             badge_text(ui, "未识别的布局", egui::Color32::from_rgb(230, 90, 90));
                         }
@@ -249,7 +278,11 @@ impl RamdiskPage {
                             crate::util::kv(
                                 ui,
                                 "bin/init_early",
-                                if probe.has_init_early { "存在" } else { "不存在" },
+                                if probe.has_init_early {
+                                    "存在"
+                                } else {
+                                    "不存在"
+                                },
                             );
                             crate::util::kv(ui, "负载大小", human_size(probe.payload_len));
                             crate::util::kv(
@@ -272,9 +305,23 @@ impl RamdiskPage {
         }
 
         ui.add_space(8.0);
-        path_edit(ui, app, "新 init_early 二进制", &mut self.patch.binary, false, "选择文件…");
+        path_edit(
+            ui,
+            app,
+            "新 init_early 二进制",
+            &mut self.patch.binary,
+            false,
+            "选择文件…",
+        );
         ui.add_space(6.0);
-        path_edit(ui, app, "输出镜像", &mut self.patch.output, false, "选择保存位置…");
+        path_edit(
+            ui,
+            app,
+            "输出镜像",
+            &mut self.patch.output,
+            false,
+            "选择保存位置…",
+        );
         ui.add_space(8.0);
         let ready = !app.job_running()
             && !self.patch.image.trim().is_empty()
@@ -324,7 +371,11 @@ fn path_edit(
         ui.label(egui::RichText::new(label).strong());
         ui.add(
             egui::TextEdit::singleline(value)
-                .hint_text(if is_dir { "目录路径" } else { "文件路径" })
+                .hint_text(if is_dir {
+                    "目录路径"
+                } else {
+                    "文件路径"
+                })
                 .desired_width(ui.available_width() - 220.0),
         );
         if ui.button(button).clicked() {

@@ -1,9 +1,3 @@
-//! Haucet Tools GUI — 华为/HarmonyOS 镜像工具箱
-//!
-//! The same executable doubles as a background job worker: when spawned with
-//! `HAUCET_GUI_WORKER=1` it reads a job spec from stdin, runs it, and prints
-//! the result as JSON on stdout (see `worker.rs`).
-
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
@@ -49,8 +43,9 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-/// Load `assets/logo.png` once: window icon data plus RGBA pixels for the UI.
-fn load_logo() -> (Option<egui::IconData>, Option<(Vec<u8>, [usize; 2])>) {
+type LogoData = (Vec<u8>, [usize; 2]);
+
+fn load_logo() -> (Option<egui::IconData>, Option<LogoData>) {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let logo_path = manifest_dir.join("../../assets/logo.png");
     let bytes = match std::fs::read(&logo_path) {
@@ -67,7 +62,6 @@ fn load_logo() -> (Option<egui::IconData>, Option<(Vec<u8>, [usize; 2])>) {
     if raw_width == 0 || height == 0 {
         return (None, None);
     }
-    // 窗口图标要求宽度为 4 的倍数；不足则补透明列。
     let width = (raw_width + 3) & !3;
     let mut pixels = vec![0_u8; (width * height * 4) as usize];
     for y in 0..height {

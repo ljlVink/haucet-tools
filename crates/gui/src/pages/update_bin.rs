@@ -36,12 +36,12 @@ impl UpdateBinPage {
                             .hint_text("update.bin 或拖放文件到这里")
                             .desired_width(ui.available_width() - 320.0),
                     );
-                    if ui.button("选择文件…").clicked() {
-                        if let Some(path) = app.pick_file("选择 update.bin", &[("update.bin", &["bin"])])
-                        {
-                            self.input = path.display().to_string();
-                            self.output = default_output(&self.input);
-                        }
+                    if ui.button("选择文件…").clicked()
+                        && let Some(path) =
+                            app.pick_file("选择 update.bin", &[("update.bin", &["bin"])])
+                    {
+                        self.input = path.display().to_string();
+                        self.output = default_output(&self.input);
                     }
                 });
                 let drops = app.take_drops(ui.ctx());
@@ -92,10 +92,10 @@ impl UpdateBinPage {
                         egui::TextEdit::singleline(&mut self.output)
                             .desired_width(ui.available_width() - 260.0),
                     );
-                    if ui.button("选择目录…").clicked() {
-                        if let Some(dir) = app.pick_dir("选择输出目录") {
-                            self.output = dir.display().to_string();
-                        }
+                    if ui.button("选择目录…").clicked()
+                        && let Some(dir) = app.pick_dir("选择输出目录")
+                    {
+                        self.output = dir.display().to_string();
                     }
                     ui.checkbox(&mut self.force, "覆盖已存在文件");
                 });
@@ -148,17 +148,17 @@ impl UpdateBinPage {
             });
             return;
         }
-        if let Some(payload) = result.payload {
-            if let Ok(index) = serde_json::from_value::<PackageIndex>(payload) {
-                self.checked = vec![true; index.components.len()];
-                self.message = Some(format!(
-                    "共 {} 个组件（检测到 {} 布局）。双击组件名可复制。",
-                    index.components.len(),
-                    layout_label(&index.layout)
-                ));
-                self.index = Some(index);
-                return;
-            }
+        if let Some(payload) = result.payload
+            && let Ok(index) = serde_json::from_value::<PackageIndex>(payload)
+        {
+            self.checked = vec![true; index.components.len()];
+            self.message = Some(format!(
+                "共 {} 个组件（检测到 {} 布局）。双击组件名可复制。",
+                index.components.len(),
+                layout_label(&index.layout)
+            ));
+            self.index = Some(index);
+            return;
         }
         self.result = Some(ResultView {
             ok: true,
@@ -214,8 +214,7 @@ impl UpdateBinPage {
                 ui.ctx().copy_text(copy);
             }
             ui.label(
-                egui::RichText::new("提示：点击行可选中/取消，勾选决定“解包勾选组件”的内容")
-                    .weak(),
+                egui::RichText::new("提示：点击行可选中/取消，勾选决定“解包勾选组件”的内容").weak(),
             );
         });
         ui.add_space(4.0);

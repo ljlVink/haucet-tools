@@ -37,11 +37,10 @@ impl PartitionPage {
                             .hint_text("镜像路径或拖放文件到这里")
                             .desired_width(ui.available_width() - 260.0),
                     );
-                    if ui.button("选择文件…").clicked() {
-                        if let Some(path) = app.pick_file("选择分区镜像", &[("镜像", &["img"])]) {
+                    if ui.button("选择文件…").clicked()
+                        && let Some(path) = app.pick_file("选择分区镜像", &[("镜像", &["img"])]) {
                             self.input = path.display().to_string();
                         }
-                    }
                 });
                 let drops = app.take_drops(ui.ctx());
                 if let Some(path) = drops.first() {
@@ -70,11 +69,10 @@ impl PartitionPage {
                     self.render(ui, summary);
                 }
                 ui.add_space(10.0);
-                if let Some(result) = &self.result {
-                    if !result.ok {
+                if let Some(result) = &self.result
+                    && !result.ok {
                         message_box(ui, egui::Color32::from_rgb(230, 90, 90), &result.summary);
                     }
-                }
             });
     }
 
@@ -103,7 +101,11 @@ impl PartitionPage {
     fn render(&self, ui: &mut egui::Ui, summary: &PartitionSummary) {
         match summary {
             PartitionSummary::Harmony(harmony) => {
-                badge_heading(ui, "HARMONY! 分区镜像", egui::Color32::from_rgb(90, 170, 255));
+                badge_heading(
+                    ui,
+                    "HARMONY! 分区镜像",
+                    egui::Color32::from_rgb(90, 170, 255),
+                );
                 self.render_harmony(ui, harmony);
             }
             PartitionSummary::Rvt(rvt) => {
@@ -115,7 +117,11 @@ impl PartitionPage {
                 cert,
                 cert_error,
             } => {
-                badge_heading(ui, "HVB 包装的分区镜像", egui::Color32::from_rgb(90, 170, 255));
+                badge_heading(
+                    ui,
+                    "HVB 包装的分区镜像",
+                    egui::Color32::from_rgb(90, 170, 255),
+                );
                 section(ui, "HVB 尾部");
                 egui::Grid::new("hvb-footer-grid")
                     .num_columns(2)
@@ -134,7 +140,10 @@ impl PartitionPage {
                         message_box(
                             ui,
                             egui::Color32::from_rgb(230, 170, 40),
-                            format!("证书解析失败：{}", cert_error.as_deref().unwrap_or("未知错误")),
+                            format!(
+                                "证书解析失败：{}",
+                                cert_error.as_deref().unwrap_or("未知错误")
+                            ),
                         );
                     }
                 }
@@ -149,7 +158,11 @@ impl PartitionPage {
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
                 kv(ui, "头大小", crate::util::hex64(harmony.hdr_size as u64));
-                kv(ui, "镜像大小", crate::util::hex64(harmony.image_size as u64));
+                kv(
+                    ui,
+                    "镜像大小",
+                    crate::util::hex64(harmony.image_size as u64),
+                );
                 kv(ui, "标志", crate::util::hex64(harmony.flags as u64));
                 kv(ui, "构建变体", &harmony.buildvariant);
             });
@@ -159,10 +172,22 @@ impl PartitionPage {
             .num_columns(2)
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
-                kv(ui, "证书偏移", crate::util::hex64(harmony.footer.cert_offset));
+                kv(
+                    ui,
+                    "证书偏移",
+                    crate::util::hex64(harmony.footer.cert_offset),
+                );
                 kv(ui, "证书大小", human_size(harmony.footer.cert_size));
-                kv(ui, "镜像大小", crate::util::hex64(harmony.footer.image_size));
-                kv(ui, "分区大小", crate::util::hex64(harmony.footer.partition_size));
+                kv(
+                    ui,
+                    "镜像大小",
+                    crate::util::hex64(harmony.footer.image_size),
+                );
+                kv(
+                    ui,
+                    "分区大小",
+                    crate::util::hex64(harmony.footer.partition_size),
+                );
             });
         ui.add_space(6.0);
         section(ui, "HVB 证书");
@@ -251,24 +276,21 @@ impl PartitionPage {
                                 .chars()
                                 .take(16)
                                 .collect::<String>();
-                            ui.label(
-                                egui::RichText::new(format!("{short}…"))
-                                    .monospace()
-                                    .weak(),
-                            )
-                            .on_hover_text(&descriptor.pubkey_sha256);
+                            ui.label(egui::RichText::new(format!("{short}…")).monospace().weak())
+                                .on_hover_text(&descriptor.pubkey_sha256);
                         });
-                        row.col(|ui| {
-                            match &descriptor.backup_equals_main {
-                                Some(true) => {
-                                    ui.label(egui::RichText::new("与主密钥相同").weak());
-                                }
-                                Some(false) => {
-                                    ui.label(egui::RichText::new("不同").color(egui::Color32::from_rgb(230, 170, 40)));
-                                }
-                                None => {
-                                    ui.label(egui::RichText::new("无").weak());
-                                }
+                        row.col(|ui| match &descriptor.backup_equals_main {
+                            Some(true) => {
+                                ui.label(egui::RichText::new("与主密钥相同").weak());
+                            }
+                            Some(false) => {
+                                ui.label(
+                                    egui::RichText::new("不同")
+                                        .color(egui::Color32::from_rgb(230, 170, 40)),
+                                );
+                            }
+                            None => {
+                                ui.label(egui::RichText::new("无").weak());
                             }
                         });
                     });
@@ -296,7 +318,11 @@ fn render_cert(ui: &mut egui::Ui, cert: &CertSummary) {
                 format!("{}.{}", cert.version_major, cert.version_minor),
             );
             kv(ui, "分区名", &cert.partition_name);
-            kv(ui, "原始镜像长度", crate::util::hex64(cert.image_original_len));
+            kv(
+                ui,
+                "原始镜像长度",
+                crate::util::hex64(cert.image_original_len),
+            );
             kv(ui, "镜像长度", crate::util::hex64(cert.image_len));
             kv(
                 ui,

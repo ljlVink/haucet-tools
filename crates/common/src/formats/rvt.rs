@@ -1,32 +1,115 @@
 use super::harmony::{HVB_CERT_MAGIC, HVB_FOOTER_MAGIC, HVB_FOOTER_SIZE, HvbCert, HvbFooter};
 use crate::bytes;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
+use std::path::Path;
 
 const RVT_MAGIC: &[u8; 4] = b"rot\0";
 const RVT_HEADER_SIZE: usize = 72;
 const DESCRIPTOR_SIZE: usize = 80;
 const RVT_MAX_SIZE: usize = 64 * 1024;
 
-struct Descriptor<'a> {
-    name: String,
-    pubkey_offset: u64,
-    pubkey_len: usize,
-    pubkey: &'a [u8],
-    backup: Option<&'a [u8]>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RvtDescriptor {
+    pub name: String,
+    pub pubkey_offset: u64,
+    pub pubkey_len: usize,
+    pub algorithm: String,
+    pub pubkey_sha256: String,
+    pub backup_sha256: Option<String>,
+    pub backup_equals_main: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RvtInfo {
+    pub verity_num: u32,
+    pub raw_key_count: u32,
+    pub total_size: usize,
+    pub expected_size: usize,
+    pub hvb_wrapped: bool,
+    pub footer: Option<HvbFooter>,
+    pub cert: Option<HvbCert>,
+    pub embedded_cert: Option<HvbCert>,
+    pub descriptors: Vec<RvtDescriptor>,
 }
 
 pub fn parse_file(path: &str) -> io::Result<()> {
-    let data = fs::read(path)?;
-    eprintln!("file: {path}  size: {} ({:#x})", data.len(), data.len());
+    let info = parse_image(Path::new(path))?;
+    let path_display = path;
+    eprintln!(
+        "file: {path_display}  size: {} ({:#x})",
+        info.expected_size, info.expected_size
+    );
 
-    let (rvt_data, expected_size) = if has_footer(&data) {
+    if info.hvb_wrapped {
         eprintln!("detected: HVB-wrapped RVT image");
+        if let Some(footer) = &info.footer {
+            print_footer(footer);
+        }
+        if let Some(cert) = &info.cert {
+            print_cert(0, cert);
+        }
+    } else {
+        eprintln!("detected: raw RVT image or partition dump");
+    }
+
+    println!("=== RVT image ===");
+    println!("magic                : rot\\0");
+    println!("verity_num           : {}", info.verity_num);
+    if info.raw_key_count == 0 {
+        println!("pubkey_num_per_ptn   : 0 (old-version value, treated as 1)");
+    } else {
+        println!("pubkey_num_per_ptn   : {}", info.raw_key_count);
+    }
+    println!("chain descriptors    : {}", info.descriptors.len());
+    println!(
+        "total raw size       : {} bytes ({:#x})",
+        info.total_size, info.total_size
+    );
+
+    for (index, descriptor) in info.descriptors.iter().enumerate() {
+        println!("\n--- descriptor #{index} ---");
+        println!("  partition name       : {:?}", descriptor.name);
+        println!("  pubkey offset        : {:#x}", descriptor.pubkey_offset);
+        println!("  pubkey length        : {} bytes", descriptor.pubkey_len);
+        println!("  detected algorithm   : {}", descriptor.algorithm);
+        println!("  pubkey SHA256        : {}", descriptor.pubkey_sha256);
+        if let Some(backup) = &descriptor.backup_sha256 {
+            println!("  pubkey backup SHA256 : {backup}");
+            println!(
+                "  backup == main       : {}",
+                descriptor.backup_equals_main.unwrap_or(false)
+            );
+        }
+    }
+
+    println!("\n=== sanity checks ===");
+    println!("  expected image size  = {:#x}", info.expected_size);
+    println!("  rvt.total_size       = {:#x}", info.total_size);
+    if info.total_size > info.expected_size {
+        println!("  WARN: RVT content exceeds the image segment");
+    } else {
+        println!("  OK: RVT content fits in the image segment");
+    }
+
+    if !info.hvb_wrapped
+        && let Some(cert) = &info.embedded_cert
+    {
+        println!("\n=== embedded HVB certificate ===");
+        print_cert(0, cert);
+    }
+
+    Ok(())
+}
+
+pub fn parse_image(path: &Path) -> io::Result<RvtInfo> {
+    let data = fs::read(path)?;
+
+    let (rvt_data, expected_size, hvb_wrapped, footer, cert) = if has_footer(&data) {
         let footer_pos = data.len() - HVB_FOOTER_SIZE;
         let footer = HvbFooter::parse(&data[footer_pos..])?;
-        print_footer(&footer);
-
         let cert_start = usize::try_from(footer.cert_offset)
             .map_err(|_| invalid("HVB cert offset does not fit usize"))?;
         let cert_size = usize::try_from(footer.cert_size)
@@ -37,76 +120,47 @@ pub fn parse_file(path: &str) -> io::Result<()> {
         if cert_end > data.len() {
             return Err(invalid("HVB cert range is outside the image"));
         }
-        print_cert(cert_start, &HvbCert::parse(&data[cert_start..cert_end])?);
-
+        let cert = HvbCert::parse(&data[cert_start..cert_end])?;
         let image_size = usize::try_from(footer.image_size)
             .map_err(|_| invalid("HVB image size does not fit usize"))?;
         if image_size > data.len() {
             return Err(invalid("HVB image segment is outside the file"));
         }
-        (&data[..image_size], image_size)
+        (
+            &data[..image_size],
+            image_size,
+            true,
+            Some(footer),
+            Some(cert),
+        )
     } else {
-        eprintln!("detected: raw RVT image or partition dump");
-        (&data[..], data.len())
+        (&data[..], data.len(), false, None, None)
     };
 
     let (descriptors, verity_num, raw_key_count, total_size) = parse_rvt(rvt_data)?;
-    println!("=== RVT image ===");
-    println!("magic                : rot\\0");
-    println!("verity_num           : {verity_num}");
-    if raw_key_count == 0 {
-        println!("pubkey_num_per_ptn   : 0 (old-version value, treated as 1)");
+
+    let embedded_cert = if hvb_wrapped {
+        None
     } else {
-        println!("pubkey_num_per_ptn   : {raw_key_count}");
-    }
-    println!("chain descriptors    : {}", descriptors.len());
-    println!("total raw size       : {total_size} bytes ({total_size:#x})");
+        find_embedded_cert(&data, total_size)
+            .map(|offset| HvbCert::parse(&data[offset..]))
+            .transpose()?
+    };
 
-    for (index, descriptor) in descriptors.iter().enumerate() {
-        println!("\n--- descriptor #{index} ---");
-        println!("  partition name       : {:?}", descriptor.name);
-        println!("  pubkey offset        : {:#x}", descriptor.pubkey_offset);
-        println!("  pubkey length        : {} bytes", descriptor.pubkey_len);
-        println!(
-            "  detected algorithm   : {}",
-            algorithm(descriptor.pubkey_len)
-        );
-        println!("  pubkey SHA256        : {}", sha256_hex(descriptor.pubkey));
-        println!(
-            "  pubkey hex (first 32B): {}",
-            hex::encode(&descriptor.pubkey[..descriptor.pubkey.len().min(32)])
-        );
-        if let Some(backup) = descriptor.backup {
-            println!("  pubkey backup SHA256 : {}", sha256_hex(backup));
-            println!(
-                "  pubkey backup (32B)  : {}",
-                hex::encode(&backup[..backup.len().min(32)])
-            );
-            println!("  backup == main       : {}", backup == descriptor.pubkey);
-        }
-    }
-
-    println!("\n=== sanity checks ===");
-    println!("  expected image size  = {expected_size:#x}");
-    println!("  rvt.total_size       = {total_size:#x}");
-    if total_size > expected_size {
-        println!("  WARN: RVT content exceeds the image segment");
-    } else {
-        println!("  OK: RVT content fits in the image segment");
-    }
-
-    if !has_footer(&data)
-        && let Some(cert_offset) = find_embedded_cert(&data, total_size)
-    {
-        println!("\n=== embedded HVB certificate ===");
-        let cert = HvbCert::parse(&data[cert_offset..])?;
-        print_cert(cert_offset, &cert);
-    }
-
-    Ok(())
+    Ok(RvtInfo {
+        verity_num,
+        raw_key_count,
+        total_size,
+        expected_size,
+        hvb_wrapped,
+        footer,
+        cert,
+        embedded_cert,
+        descriptors,
+    })
 }
 
-fn parse_rvt(data: &[u8]) -> io::Result<(Vec<Descriptor<'_>>, u32, u32, usize)> {
+fn parse_rvt(data: &[u8]) -> io::Result<(Vec<RvtDescriptor>, u32, u32, usize)> {
     if data.len() < RVT_HEADER_SIZE {
         return Err(invalid("file is too small for an RVT header"));
     }
@@ -174,12 +228,14 @@ fn parse_rvt(data: &[u8]) -> io::Result<(Vec<Descriptor<'_>>, u32, u32, usize)> 
 
         let pubkey = &data[header_end..header_end + pubkey_len];
         let backup = (key_count == 2).then(|| &data[header_end + pubkey_len..entry_end]);
-        descriptors.push(Descriptor {
+        descriptors.push(RvtDescriptor {
             name,
             pubkey_offset,
             pubkey_len,
-            pubkey,
-            backup,
+            algorithm: algorithm(pubkey_len).to_owned(),
+            pubkey_sha256: sha256_hex(pubkey),
+            backup_sha256: backup.map(sha256_hex),
+            backup_equals_main: backup.map(|bytes| bytes == pubkey),
         });
         offset = entry_end;
     }

@@ -55,7 +55,6 @@ impl Page {
     }
 }
 
-/// update.bin 布局选择（高级选项）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LayoutChoice {
     #[default]
@@ -84,12 +83,10 @@ impl LayoutChoice {
     }
 }
 
-/// 一个任务完成后的展示结果。
 #[derive(Debug, Clone, Default)]
 pub struct ResultView {
     pub ok: bool,
     pub summary: String,
-    /// 完成时可“打开目录”的路径。
     pub output: String,
 }
 
@@ -101,17 +98,19 @@ pub fn layout_label(layout: &common::formats::update_bin::UpdateLayout) -> &'sta
     }
 }
 
-/// 通用页面工具函数。
-
 pub fn badge_text(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     ui.label(egui::RichText::new(text).color(color).strong());
 }
 
-pub(crate) fn run_button(ui: &mut egui::Ui, text: &str, enabled: bool, hint: Option<&str>) -> egui::Response {
+pub(crate) fn run_button(
+    ui: &mut egui::Ui,
+    text: &str,
+    enabled: bool,
+    hint: Option<&str>,
+) -> egui::Response {
     let response = ui.add_enabled(
         enabled,
-        egui::Button::new(egui::RichText::new(text).strong())
-            .min_size(egui::vec2(140.0, 32.0)),
+        egui::Button::new(egui::RichText::new(text).strong()).min_size(egui::vec2(140.0, 32.0)),
     );
     match hint {
         Some(hint) => response.on_hover_text(hint),

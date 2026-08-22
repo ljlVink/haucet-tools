@@ -63,12 +63,18 @@ impl HomePage {
         }
 
         let height = 130.0;
-        let (rect, response) =
-            ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), height),
+            egui::Sense::hover(),
+        );
         let hovered = response.hovered()
-            || ui
-                .ctx()
-                .input(|input| input.raw.hovered_files.iter().any(|file| file.path.is_some()));
+            || ui.ctx().input(|input| {
+                input
+                    .raw
+                    .hovered_files
+                    .iter()
+                    .any(|file| file.path.is_some())
+            });
         let fill = if hovered {
             ui.visuals().selection.bg_fill.gamma_multiply(0.6)
         } else {
@@ -91,7 +97,11 @@ impl HomePage {
         ui.painter().text(
             rect.center() - egui::vec2(0.0, 14.0),
             egui::Align2::CENTER_CENTER,
-            if hovered { "松开以识别文件" } else { "把文件或文件夹拖到这里" },
+            if hovered {
+                "松开以识别文件"
+            } else {
+                "把文件或文件夹拖到这里"
+            },
             egui::FontId::proportional(18.0),
             if hovered {
                 ui.visuals().selection.stroke.color
@@ -108,7 +118,12 @@ impl HomePage {
         );
     }
 
-    fn detection_card(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp, detection: &detect::Detection) {
+    fn detection_card(
+        &mut self,
+        ui: &mut egui::Ui,
+        app: &mut HaucetApp,
+        detection: &detect::Detection,
+    ) {
         ui.label(egui::RichText::new("文件识别结果").strong().size(15.0));
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::same(12))
@@ -119,11 +134,7 @@ impl HomePage {
                             .strong()
                             .color(accent()),
                     );
-                    ui.label(
-                        egui::RichText::new(&detection.path)
-                            .weak()
-                            .monospace(),
-                    );
+                    ui.label(egui::RichText::new(&detection.path).weak().monospace());
                 });
                 ui.label(&detection.human);
                 ui.add_space(8.0);
@@ -133,10 +144,7 @@ impl HomePage {
                             apply_action(app, page, kind, &detection.path);
                         }
                     }
-                    if ui
-                        .button("重新识别")
-                        .clicked()
-                    {
+                    if ui.button("重新识别").clicked() {
                         self.detection =
                             Some(detect::detect(std::path::Path::new(&detection.path)));
                     }
@@ -151,10 +159,34 @@ impl HomePage {
             .num_columns(2)
             .spacing([12.0, 12.0])
             .show(ui, |ui| {
-                quick_card(ui, "解开更新包", "把 update_full_base.zip 解成工作区，可挑选分区", Page::Package, app);
-                quick_card(ui, "给 ramdisk 打补丁", "替换 init_early，自动检查大小限制", Page::Ramdisk, app);
-                quick_card(ui, "解包/打包 EROFS", "system / vendor 等分区镜像的展开与重建", Page::Erofs, app);
-                quick_card(ui, "查看分区信息", "识别 HARMONY! / HVB / RVT 并展示细节", Page::Partition, app);
+                quick_card(
+                    ui,
+                    "解开更新包",
+                    "把 update_full_base.zip 解成工作区，可挑选分区",
+                    Page::Package,
+                    app,
+                );
+                quick_card(
+                    ui,
+                    "给 ramdisk 打补丁",
+                    "替换 init_early，自动检查大小限制",
+                    Page::Ramdisk,
+                    app,
+                );
+                quick_card(
+                    ui,
+                    "解包/打包 EROFS",
+                    "system / vendor 等分区镜像的展开与重建",
+                    Page::Erofs,
+                    app,
+                );
+                quick_card(
+                    ui,
+                    "查看分区信息",
+                    "识别 HARMONY! / HVB / RVT 并展示细节",
+                    Page::Partition,
+                    app,
+                );
             });
     }
 

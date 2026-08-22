@@ -1,8 +1,3 @@
-//! Runtime loading of a CJK-capable font so the Chinese UI renders correctly.
-//! egui's bundled fonts have no CJK glyphs, so we search well-known system
-//! font paths (and scan font directories on Linux) and install the first
-//! match as a fallback family. Returns false when nothing was found.
-
 use eframe::egui;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,8 +6,22 @@ const MIN_FONT_BYTES: u64 = 100 * 1024;
 const MAX_FONT_BYTES: u64 = 64 * 1024 * 1024;
 
 const CJK_KEYWORDS: &[&str] = &[
-    "cjk", "wqy", "droid", "noto", "han", "hei", "song", "ming", "pingfang", "yahei", "sourcehan",
-    "uming", "ukai", "microhei", "zenhei", "fallback",
+    "cjk",
+    "wqy",
+    "droid",
+    "noto",
+    "han",
+    "hei",
+    "song",
+    "ming",
+    "pingfang",
+    "yahei",
+    "sourcehan",
+    "uming",
+    "ukai",
+    "microhei",
+    "zenhei",
+    "fallback",
 ];
 
 pub fn install_cjk_font(ctx: &egui::Context) -> bool {
@@ -21,13 +30,11 @@ pub fn install_cjk_font(ctx: &egui::Context) -> bool {
             continue;
         };
         let mut fonts = egui::FontDefinitions::default();
-        fonts
-            .font_data
-            .insert("cjk".to_owned(), Arc::new(egui::FontData::from_owned(bytes)));
-        for family in [
-            egui::FontFamily::Proportional,
-            egui::FontFamily::Monospace,
-        ] {
+        fonts.font_data.insert(
+            "cjk".to_owned(),
+            Arc::new(egui::FontData::from_owned(bytes)),
+        );
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             fonts
                 .families
                 .entry(family)
@@ -136,9 +143,8 @@ fn scan_font_dir(dir: &Path, candidates: &mut Vec<PathBuf>, depth: usize) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-        let has_font_ext = name.ends_with(".ttf")
-            || name.ends_with(".ttc")
-            || name.ends_with(".otf");
+        let has_font_ext =
+            name.ends_with(".ttf") || name.ends_with(".ttc") || name.ends_with(".otf");
         if has_font_ext && CJK_KEYWORDS.iter().any(|keyword| name.contains(keyword)) {
             candidates.push(path);
         }
