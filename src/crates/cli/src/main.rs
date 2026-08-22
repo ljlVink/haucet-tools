@@ -65,7 +65,7 @@ struct FullUnpackArgs {
     partitions: Vec<String>,
     #[arg(long, conflicts_with = "partitions")]
     all_erofs: bool,
-    #[arg(long, value_enum, default_value_t = UpdateLayout::Auto)]
+    #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
     layout: UpdateLayout,
     #[arg(long)]
     force: bool,
@@ -78,7 +78,7 @@ enum UpdateBinCommand {
     /// List the contents of an update binary
     List {
         input: PathBuf,
-        #[arg(long, value_enum, default_value_t = UpdateLayout::Auto)]
+        #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
         layout: UpdateLayout,
     },
     /// Unpack an update binary into a workspace directory
@@ -86,7 +86,7 @@ enum UpdateBinCommand {
         input: PathBuf,
         #[arg(short, long)]
         out: PathBuf,
-        #[arg(long, value_enum, default_value_t = UpdateLayout::Auto)]
+        #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
         layout: UpdateLayout,
         #[arg(long)]
         force: bool,
@@ -389,6 +389,10 @@ fn absolute_path(path: &Path) -> Result<PathBuf> {
     } else {
         Ok(std::env::current_dir()?.join(path))
     }
+}
+
+fn parse_update_layout(value: &str) -> std::result::Result<UpdateLayout, String> {
+    value.parse()
 }
 
 fn finish_unpack(out: &std::path::Path, skip_chown: bool) -> Result<()> {

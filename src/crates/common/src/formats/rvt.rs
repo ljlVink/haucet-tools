@@ -1,4 +1,5 @@
 use super::harmony::{HVB_CERT_MAGIC, HVB_FOOTER_MAGIC, HVB_FOOTER_SIZE, HvbCert, HvbFooter};
+use crate::bytes;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
@@ -73,13 +74,13 @@ pub fn parse_file(path: &str) -> io::Result<()> {
         println!("  pubkey SHA256        : {}", sha256_hex(descriptor.pubkey));
         println!(
             "  pubkey hex (first 32B): {}",
-            hex(&descriptor.pubkey[..descriptor.pubkey.len().min(32)])
+            hex::encode(&descriptor.pubkey[..descriptor.pubkey.len().min(32)])
         );
         if let Some(backup) = descriptor.backup {
             println!("  pubkey backup SHA256 : {}", sha256_hex(backup));
             println!(
                 "  pubkey backup (32B)  : {}",
-                hex(&backup[..backup.len().min(32)])
+                hex::encode(&backup[..backup.len().min(32)])
             );
             println!("  backup == main       : {}", backup == descriptor.pubkey);
         }
@@ -258,31 +259,15 @@ fn algorithm(pubkey_len: usize) -> &'static str {
 }
 
 fn sha256_hex(data: &[u8]) -> String {
-    hex(&Sha256::digest(data))
-}
-
-fn hex(data: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(data.len() * 2);
-    for byte in data {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
+    hex::encode(Sha256::digest(data))
 }
 
 fn le_u32(data: &[u8], offset: usize) -> io::Result<u32> {
-    let bytes = data
-        .get(offset..offset + 4)
-        .ok_or_else(|| invalid("unexpected end of RVT data"))?;
-    Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
+    bytes::read_u32(data, offset).map_err(|_| invalid("unexpected end of RVT data"))
 }
 
 fn le_u64(data: &[u8], offset: usize) -> io::Result<u64> {
-    let bytes = data
-        .get(offset..offset + 8)
-        .ok_or_else(|| invalid("unexpected end of RVT data"))?;
-    Ok(u64::from_le_bytes(bytes.try_into().unwrap()))
+    bytes::read_u64(data, offset).map_err(|_| invalid("unexpected end of RVT data"))
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {

@@ -29,6 +29,7 @@ impl FromStr for FileFormat {
             "xz" => Ok(Self::XZ),
             "lzma" => Ok(Self::LZMA),
             "bzip2" => Ok(Self::BZIP2),
+            "lzop" => Ok(Self::LZOP),
             "lz4" => Ok(Self::LZ4),
             "lz4_legacy" => Ok(Self::LZ4_LEGACY),
             "lz4_lg" => Ok(Self::LZ4_LG),
@@ -85,23 +86,6 @@ impl FileFormat {
                 | Self::LZ4_LEGACY
                 | Self::LZ4_LG
         )
-    }
-
-    pub fn formats() -> String {
-        [
-            Self::GZIP,
-            Self::ZOPFLI,
-            Self::XZ,
-            Self::LZMA,
-            Self::BZIP2,
-            Self::LZ4,
-            Self::LZ4_LEGACY,
-            Self::LZ4_LG,
-        ]
-        .iter()
-        .map(|f| f.to_string())
-        .collect::<Vec<_>>()
-        .join(" ")
     }
 }
 

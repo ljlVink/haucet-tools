@@ -1,9 +1,8 @@
-//! Commands for unpacking, repacking, inspecting, and patching ramdisk images.
-
 use crate::compress::{compress_vec, decompress_vec};
 use crate::formats::cpio::Cpio;
 use crate::formats::harmony::HvbFrame;
 use crate::formats::header::{FileFormat, check_fmt};
+use serde_json::json;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -221,26 +220,31 @@ fn print_frame_summary(frame: &HvbFrame) {
 }
 
 fn frame_to_json(frame: &HvbFrame) -> String {
-    format!(
-        "{{\n\
-         \"harmony\": {{ \"hdr_size\": {h_hdr}, \"image_size\": {h_img}, \"flags\": {h_flg}, \"buildvariant\": {bv:?} }},\n\
-         \"footer\": {{ \"cert_offset\": {f_co}, \"cert_size\": {f_cs}, \"image_size\": {f_is}, \"partition_size\": {f_ps} }},\n\
-         \"cert\": {{ \"version_major\": {c_vm}, \"version_minor\": {c_vn}, \"image_original_len\": {c_io}, \"image_len\": {c_il}, \"partition_name\": {c_pn:?}, \"verity_type\": {c_vt}, \"hash_algo\": {c_ha} }}\n\
-         }}\n",
-        h_hdr = frame.harmony.hdr_size,
-        h_img = frame.harmony.image_size,
-        h_flg = frame.harmony.flags,
-        bv = frame.harmony.buildvariant,
-        f_co = frame.footer.cert_offset,
-        f_cs = frame.footer.cert_size,
-        f_is = frame.footer.image_size,
-        f_ps = frame.footer.partition_size,
-        c_vm = frame.cert.version_major,
-        c_vn = frame.cert.version_minor,
-        c_io = frame.cert.image_original_len,
-        c_il = frame.cert.image_len,
-        c_pn = frame.cert.partition_name,
-        c_vt = frame.cert.verity_type,
-        c_ha = frame.cert.hash_algo,
-    )
+    let harmony = &frame.harmony;
+    let footer = &frame.footer;
+    let cert = &frame.cert;
+    serde_json::to_string_pretty(&json!({
+        "harmony": {
+            "hdr_size": harmony.hdr_size,
+            "image_size": harmony.image_size,
+            "flags": harmony.flags,
+            "buildvariant": harmony.buildvariant,
+        },
+        "footer": {
+            "cert_offset": footer.cert_offset,
+            "cert_size": footer.cert_size,
+            "image_size": footer.image_size,
+            "partition_size": footer.partition_size,
+        },
+        "cert": {
+            "version_major": cert.version_major,
+            "version_minor": cert.version_minor,
+            "image_original_len": cert.image_original_len,
+            "image_len": cert.image_len,
+            "partition_name": cert.partition_name,
+            "verity_type": cert.verity_type,
+            "hash_algo": cert.hash_algo,
+        },
+    }))
+    .expect("serializing frame summary cannot fail")
 }

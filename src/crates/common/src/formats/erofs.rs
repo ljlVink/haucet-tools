@@ -1,4 +1,5 @@
 use super::hvb::{HvbFooter, HvbWrapper};
+use crate::fs_util;
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const EROFS_MAGIC: [u8; 4] = [0xe2, 0xe1, 0xf5, 0xe0];
@@ -59,7 +60,7 @@ pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: boo
         "{} is not an EROFS image",
         image.display()
     );
-    prepare_workspace(out, force)?;
+    fs_util::prepare_dir(out, "EROFS workspace", force)?;
 
     eprintln!("extracting EROFS image {}", image.display());
     run_status(
@@ -84,7 +85,7 @@ pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: boo
     let partition = wrapper
         .as_ref()
         .and_then(HvbWrapper::partition_name)
-        .filter(|name| valid_simple_name(name))
+        .filter(|name| fs_util::is_simple_name(name))
         .unwrap_or(&extracted_name)
         .to_owned();
     let source_dir = normalize_extraction(
@@ -151,9 +152,9 @@ pub fn repack_with_tools(
         "unsupported EROFS workspace version {}",
         manifest.version
     );
-    let source_dir = safe_join(workspace, &manifest.source_dir)?;
-    let config_dir = safe_join(workspace, &manifest.config_dir)?;
-    let fs_options_path = safe_join(workspace, &manifest.fs_options_file)?;
+    let source_dir = fs_util::safe_join(workspace, &manifest.source_dir)?;
+    let config_dir = fs_util::safe_join(workspace, &manifest.config_dir)?;
+    let fs_options_path = fs_util::safe_join(workspace, &manifest.fs_options_file)?;
     ensure!(
         source_dir.is_dir(),
         "missing source tree: {}",
@@ -167,8 +168,8 @@ pub fn repack_with_tools(
 
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
-    let raw_path = sibling_temporary(output, "raw-erofs")?;
-    let wrapped_path = sibling_temporary(output, "wrapped")?;
+    let raw_path = fs_util::sibling_temporary(output, "raw-erofs")?;
+    let wrapped_path = fs_util::sibling_temporary(output, "wrapped")?;
     ensure!(
         !raw_path.exists(),
         "temporary file exists: {}",
@@ -194,7 +195,7 @@ pub fn repack_with_tools(
 
         let raw_size = fs::metadata(&raw_path)?.len();
         if let Some(hvb) = &manifest.hvb {
-            let certificate_path = safe_join(workspace, &hvb.certificate_file)?;
+            let certificate_path = fs_util::safe_join(workspace, &hvb.certificate_file)?;
             let wrapper = HvbWrapper {
                 footer: hvb.footer.clone(),
                 certificate: fs::read(&certificate_path).with_context(|| {
@@ -239,19 +240,6 @@ pub fn repack_with_tools(
     }
     result?;
     eprintln!("wrote {}", output.display());
-    Ok(())
-}
-
-fn prepare_workspace(out: &Path, force: bool) -> Result<()> {
-    if out.exists() {
-        let mut entries = fs::read_dir(out)?;
-        if entries.next().is_some() {
-            ensure!(force, "workspace is not empty: {}", out.display());
-            fs::remove_dir_all(out)
-                .with_context(|| format!("removing old workspace {}", out.display()))?;
-        }
-    }
-    fs::create_dir_all(out)?;
     Ok(())
 }
 
@@ -302,7 +290,7 @@ fn normalize_extraction(
         return Ok(source_dir);
     }
     ensure!(
-        valid_simple_name(partition),
+        fs_util::is_simple_name(partition),
         "unsafe partition name in HVB certificate: {partition:?}"
     );
     let normalized_source = workspace.join(partition);
@@ -476,11 +464,11 @@ fn tool_version(tool: &Path) -> String {
 
 fn write_manifest(workspace: &Path, manifest: &ErofsManifest) -> Result<()> {
     let path = workspace.join(MANIFEST_NAME);
-    let temporary = workspace.join(format!(".{MANIFEST_NAME}.part"));
     let json = serde_json::to_vec_pretty(manifest)?;
-    fs::write(&temporary, json)?;
-    fs::rename(temporary, path)?;
-    Ok(())
+    fs_util::atomic_write(&path, "manifest", |writer| {
+        writer.write_all(&json)?;
+        Ok(())
+    })
 }
 
 fn read_manifest(workspace: &Path) -> Result<ErofsManifest> {
@@ -495,37 +483,4 @@ fn relative_string(base: &Path, path: &Path) -> Result<String> {
         .with_context(|| format!("{} is outside {}", path.display(), base.display()))?
         .to_string_lossy()
         .into_owned())
-}
-
-fn safe_join(base: &Path, relative: &str) -> Result<PathBuf> {
-    let path = Path::new(relative);
-    ensure!(
-        !path.is_absolute(),
-        "manifest path must be relative: {relative:?}"
-    );
-    ensure!(
-        path.components()
-            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir)),
-        "unsafe manifest path {relative:?}"
-    );
-    Ok(base.join(path))
-}
-
-fn valid_simple_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.contains('/')
-        && !name.contains('\\')
-        && Path::new(name).components().count() == 1
-        && matches!(
-            Path::new(name).components().next(),
-            Some(Component::Normal(_))
-        )
-}
-
-fn sibling_temporary(output: &Path, label: &str) -> Result<PathBuf> {
-    let name = output
-        .file_name()
-        .and_then(OsStr::to_str)
-        .context("output filename is not UTF-8")?;
-    Ok(output.with_file_name(format!(".{name}.{label}.part")))
 }

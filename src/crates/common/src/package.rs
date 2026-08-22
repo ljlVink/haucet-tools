@@ -1,14 +1,16 @@
 use crate::formats::erofs;
 use crate::formats::harmony::HARMONY_MAGIC;
+use crate::formats::header::{FileFormat, check_fmt};
 use crate::formats::update_bin::{self, Component, UpdateLayout};
+use crate::fs_util;
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::OsStr;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::{Component as PathComponent, Path};
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::Path;
 use zip::ZipArchive;
 
 const PACKAGE_MANIFEST: &str = "haucet-package.json";
@@ -127,16 +129,7 @@ pub fn unpack_full_with_tools(
 }
 
 fn prepare_output(out: &Path, force: bool) -> Result<()> {
-    if out.exists() {
-        let mut entries = fs::read_dir(out)?;
-        if entries.next().is_some() {
-            ensure!(force, "output directory is not empty: {}", out.display());
-            fs::remove_dir_all(out)
-                .with_context(|| format!("removing old output directory {}", out.display()))?;
-        }
-    }
-    fs::create_dir_all(out)?;
-    Ok(())
+    fs_util::prepare_dir(out, "output directory", force)
 }
 
 fn extract_zip_entry<R: io::Read>(
@@ -154,40 +147,22 @@ fn extract_zip_entry<R: io::Read>(
         fs::create_dir_all(&output)?;
         return Ok(());
     }
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
     if output.exists() {
         ensure!(force, "output already exists: {}", output.display());
         fs::remove_file(&output)?;
     }
-    let temporary = output.with_extension("haucet-part");
-    ensure!(
-        !temporary.exists(),
-        "temporary output already exists: {}",
-        temporary.display()
-    );
-    let result = (|| -> Result<()> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        let mut writer = BufWriter::new(file);
-        let copied = io::copy(entry, &mut writer)?;
+    let unix_mode = entry.unix_mode();
+    fs_util::atomic_write(&output, "zip-entry", |writer| {
+        let copied = io::copy(entry, writer)?;
         ensure!(
             copied == entry.size(),
             "ZIP entry {:?} is truncated",
             entry.name()
         );
-        writer.flush()?;
-        fs::rename(&temporary, &output)?;
-        set_unix_mode(&output, entry.unix_mode())?;
         Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    })?;
+    fs_util::set_unix_mode(&output, unix_mode)?;
+    Ok(())
 }
 
 fn select_partitions<'a>(
@@ -256,26 +231,12 @@ fn is_harmony_ramdisk(path: &Path) -> Result<bool> {
 }
 
 fn is_ramdisk_payload(payload: &[u8; 16]) -> bool {
-    payload.starts_with(&[0x1f, 0x8b, 0x08])
-        || payload.starts_with(&[0xfd, 0x37, 0x7a, 0x58])
-        || payload.starts_with(b"BZh")
-        || payload.starts_with(&[0x5d, 0x00, 0x00])
-        || payload.starts_with(&[0x04, 0x22, 0x4d, 0x18])
-        || payload.starts_with(&[0x02, 0x21, 0x4c, 0x18])
-        || payload.starts_with(b"070701")
-        || payload.starts_with(b"070702")
+    let format = check_fmt(payload);
+    format.is_compressed() || format == FileFormat::RAW
 }
 
 fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
-    if workspace.exists() && fs::read_dir(workspace)?.next().is_some() {
-        ensure!(
-            force,
-            "ramdisk workspace is not empty: {}",
-            workspace.display()
-        );
-        fs::remove_dir_all(workspace)?;
-    }
-    fs::create_dir_all(workspace)?;
+    fs_util::prepare_dir(workspace, "ramdisk workspace", force)?;
     let image = image
         .canonicalize()
         .with_context(|| format!("resolving ramdisk image {}", image.display()))?;
@@ -284,22 +245,9 @@ fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
 }
 
 fn validate_partition_name(name: &str) -> Result<()> {
-    let mut parts = Path::new(name).components();
     ensure!(
-        matches!(parts.next(), Some(PathComponent::Normal(_))) && parts.next().is_none(),
+        fs_util::is_simple_name(name),
         "unsafe partition name {name:?}"
     );
-    ensure!(
-        !name.contains('/') && !name.contains('\\'),
-        "unsafe partition name {name:?}"
-    );
-    Ok(())
-}
-
-fn set_unix_mode(path: &Path, mode: Option<u32>) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    if let Some(mode) = mode {
-        fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o777))?;
-    }
     Ok(())
 }

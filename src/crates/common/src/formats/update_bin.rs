@@ -1,10 +1,13 @@
+use crate::bytes;
+use crate::fs_util;
 use anyhow::{Context, Result, bail, ensure};
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::{Component as PathComponent, Path, PathBuf};
+use std::fmt;
+use std::fs::{self, File};
+use std::io::{self, BufReader, Read};
+use std::path::Path;
+use std::str::FromStr;
 
 const HEADER_LEN: usize = 180;
 const COMPINFO_LEN_OFFSET: usize = 178;
@@ -17,7 +20,7 @@ const MAX_COMPONENTS: usize = 4096;
 const MAX_METADATA_TLV: u64 = 512 * 1024 * 1024;
 const IO_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
-#[derive(Debug, Copy, Clone, Default, ValueEnum, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum UpdateLayout {
     #[default]
     Auto,
@@ -40,6 +43,31 @@ impl UpdateLayout {
             Self::L2 => L2_ADDRESS_LEN,
             Self::Auto => unreachable!("auto layout must be resolved"),
         }
+    }
+}
+
+impl FromStr for UpdateLayout {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "l1" => Ok(Self::L1),
+            "l2" => Ok(Self::L2),
+            _ => Err(format!(
+                "unknown update layout {s:?}; expected auto, l1, or l2"
+            )),
+        }
+    }
+}
+
+impl fmt::Display for UpdateLayout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "auto",
+            Self::L1 => "l1",
+            Self::L2 => "l2",
+        })
     }
 }
 
@@ -131,7 +159,7 @@ pub fn read_index<R: Read>(
         .read_exact(&mut header)
         .context("reading the 180-byte update.bin header")?;
 
-    let compinfo_len = read_u16(&header, COMPINFO_LEN_OFFSET) as usize;
+    let compinfo_len = bytes::read_u16(&header, COMPINFO_LEN_OFFSET)? as usize;
     ensure!(compinfo_len > 0, "update.bin component table is empty");
     let mut table = vec![0_u8; compinfo_len];
     reader
@@ -186,7 +214,7 @@ fn resolve_layout(
         return Ok((requested, components));
     }
 
-    let header_tlv_type = read_u16(header, 0);
+    let header_tlv_type = bytes::read_u16(header, 0)?;
     let preferred = match header_tlv_type {
         0x01 => Some(UpdateLayout::L2),
         0x11 => Some(UpdateLayout::L1),
@@ -245,7 +273,7 @@ fn parse_component_table(table: &[u8], layout: UpdateLayout) -> Result<Vec<Compo
 
         let component_type = record[address_len + 4];
         let size_offset = address_len + 15;
-        let size = read_u64(record, size_offset);
+        let size = bytes::read_u64(record, size_offset)?;
         let output_name = output_name(&name, component_type);
         ensure!(
             names.insert(output_name.clone()),
@@ -265,13 +293,8 @@ fn parse_component_table(table: &[u8], layout: UpdateLayout) -> Result<Vec<Compo
 fn validate_component_name(name: &str) -> Result<()> {
     ensure!(!name.is_empty(), "empty component name");
     ensure!(
-        !name.contains('/') && !name.contains('\\') && !name.contains('\0'),
+        fs_util::is_simple_name(name),
         "unsafe component name {name:?}"
-    );
-    let mut parts = Path::new(name).components();
-    ensure!(
-        matches!(parts.next(), Some(PathComponent::Normal(_))) && parts.next().is_none(),
-        "unsafe component path {name:?}"
     );
     Ok(())
 }
@@ -334,7 +357,10 @@ fn skip_package_metadata<R: Read>(reader: &mut R, mut offset: u64) -> Result<u64
 fn read_tlv_header<R: Read>(reader: &mut R) -> Result<(u16, u64)> {
     let mut header = [0_u8; 6];
     reader.read_exact(&mut header)?;
-    Ok((read_u16(&header, 0), read_u32(&header, 2) as u64))
+    Ok((
+        bytes::read_u16(&header, 0)?,
+        bytes::read_u32(&header, 2)? as u64,
+    ))
 }
 
 fn skip_exact<R: Read>(reader: &mut R, length: u64) -> Result<()> {
@@ -363,26 +389,21 @@ fn write_component<R: Read>(
     force: bool,
 ) -> Result<()> {
     let final_path = out.join(&component.output_name);
-    let temporary_path = temporary_path(out, position);
-    if temporary_path.exists() {
-        if force {
-            fs::remove_file(&temporary_path)?;
-        } else {
-            bail!(
-                "temporary output already exists: {}",
-                temporary_path.display()
-            );
-        }
+    let label = format!("component-{position}");
+    let temporary = fs_util::sibling_temporary(&final_path, &label)?;
+    if temporary.exists() {
+        ensure!(
+            force,
+            "temporary output already exists: {}",
+            temporary.display()
+        );
+        fs::remove_file(&temporary)?;
     }
-
-    let result = (|| -> Result<()> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)
-            .with_context(|| format!("creating {}", temporary_path.display()))?;
-        let mut writer = BufWriter::with_capacity(IO_BUFFER_SIZE, file);
-        let copied = io::copy(&mut reader.take(component.size), &mut writer)
+    if force && final_path.exists() {
+        fs::remove_file(&final_path)?;
+    }
+    fs_util::atomic_write(&final_path, &label, |writer| {
+        let copied = io::copy(&mut reader.take(component.size), writer)
             .with_context(|| format!("extracting {}", component.output_name))?;
         ensure!(
             copied == component.size,
@@ -390,38 +411,6 @@ fn write_component<R: Read>(
             component.output_name,
             component.size
         );
-        writer.flush()?;
-        if force && final_path.exists() {
-            fs::remove_file(&final_path)?;
-        }
-        fs::rename(&temporary_path, &final_path).with_context(|| {
-            format!(
-                "moving {} to {}",
-                temporary_path.display(),
-                final_path.display()
-            )
-        })?;
         Ok(())
-    })();
-
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary_path);
-    }
-    result
-}
-
-fn temporary_path(out: &Path, position: usize) -> PathBuf {
-    out.join(format!(".haucet-component-{position}.part"))
-}
-
-fn read_u16(bytes: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes(bytes[offset..offset + 2].try_into().expect("fixed range"))
-}
-
-fn read_u32(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes(bytes[offset..offset + 4].try_into().expect("fixed range"))
-}
-
-fn read_u64(bytes: &[u8], offset: usize) -> u64 {
-    u64::from_le_bytes(bytes[offset..offset + 8].try_into().expect("fixed range"))
+    })
 }

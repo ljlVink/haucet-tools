@@ -208,7 +208,12 @@ pub fn get_encoder<'a, W: Write + 'a>(
                 "XZ not supported in this build (no xz-rust crate); use gzip/lz4/raw",
             ));
         }
-        _ => unreachable!("format {format:?} is not a compression"),
+        other => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("format {other:?} is not a compression"),
+            ));
+        }
     })
 }
 
@@ -225,7 +230,12 @@ pub fn get_decoder<'a, R: Read + 'a>(format: FileFormat, r: R) -> Result<Box<dyn
                 "XZ not supported in this build",
             ));
         }
-        _ => unreachable!("format {format:?} is not a compression"),
+        other => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("format {other:?} is not a compression"),
+            ));
+        }
     })
 }
 

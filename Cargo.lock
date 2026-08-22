@@ -446,7 +446,6 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "bzip2",
- "clap",
  "flate2",
  "hex",
  "libc",

@@ -1,13 +1,13 @@
-//! HARMONY ramdisk image framing and HVB metadata handling.
-
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
+pub use super::hvb::{
+    CERT_MAGIC as HVB_CERT_MAGIC, FOOTER_MAGIC as HVB_FOOTER_MAGIC, FOOTER_SIZE as HVB_FOOTER_SIZE,
+    HvbCert, HvbFooter,
+};
+
 pub const HARMONY_MAGIC: &[u8; 8] = b"HARMONY!";
-pub const HVB_FOOTER_MAGIC: &[u8; 8] = b"HVB\0\0\0\0\0";
-pub const HVB_CERT_MAGIC: &[u8; 4] = b"HVB\0";
-pub const HVB_FOOTER_SIZE: usize = 104;
 
 #[derive(Debug, Clone)]
 pub struct HarmonyHeader {
@@ -53,108 +53,14 @@ impl HarmonyHeader {
         while bv_end < raw.len() && raw[bv_end] != 0 {
             bv_end += 1;
         }
-        let buildvariant = String::from_utf8_lossy(&raw[0x40..bv_end]).into_owned();
+        let buildvariant =
+            String::from_utf8_lossy(raw.get(0x40..bv_end).unwrap_or(&[])).into_owned();
         Ok(Self {
             hdr_size,
             image_size,
             flags,
             buildvariant,
             raw: raw.to_vec(),
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct HvbFooter {
-    pub cert_offset: u64,
-    pub cert_size: u64,
-    pub image_size: u64,
-    pub partition_size: u64,
-}
-
-impl HvbFooter {
-    pub fn parse(buf: &[u8]) -> io::Result<Self> {
-        if buf.len() < HVB_FOOTER_SIZE {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "footer too small",
-            ));
-        }
-        if &buf[0..8] != HVB_FOOTER_MAGIC {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "not HVB footer magic",
-            ));
-        }
-        let le = |off| u64::from_le_bytes(buf[off..off + 8].try_into().unwrap());
-        Ok(Self {
-            cert_offset: le(0x08),
-            cert_size: le(0x10),
-            image_size: le(0x18),
-            partition_size: le(0x20),
-        })
-    }
-
-    pub fn serialize(&self) -> [u8; HVB_FOOTER_SIZE] {
-        let mut buf = [0u8; HVB_FOOTER_SIZE];
-        buf[0..8].copy_from_slice(HVB_FOOTER_MAGIC);
-        buf[0x08..0x10].copy_from_slice(&self.cert_offset.to_le_bytes());
-        buf[0x10..0x18].copy_from_slice(&self.cert_size.to_le_bytes());
-        buf[0x18..0x20].copy_from_slice(&self.image_size.to_le_bytes());
-        buf[0x20..0x28].copy_from_slice(&self.partition_size.to_le_bytes());
-        buf
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct HvbCert {
-    pub version_major: u32,
-    pub version_minor: u32,
-    pub image_original_len: u64,
-    pub image_len: u64,
-    pub partition_name: String,
-    pub verity_type: u32,
-    pub hash_algo: u32,
-    pub salt_offset: u64,
-    pub salt_size: u64,
-    pub digest_offset: u64,
-    pub digest_size: u64,
-    pub raw: Vec<u8>,
-}
-
-impl HvbCert {
-    pub fn parse(buf: &[u8]) -> io::Result<Self> {
-        if buf.len() < 240 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "cert too small"));
-        }
-        if &buf[0..4] != HVB_CERT_MAGIC {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "not HVB cert magic",
-            ));
-        }
-        let le = |off| u64::from_le_bytes(buf[off..off + 8].try_into().unwrap());
-        let le32 = |off| u32::from_le_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]]);
-        let partition_name = {
-            let mut end = 64;
-            while end < 128 && buf[end] != 0 {
-                end += 1;
-            }
-            String::from_utf8_lossy(&buf[64..end]).into_owned()
-        };
-        Ok(Self {
-            version_major: le32(4),
-            version_minor: le32(8),
-            image_original_len: le(48),
-            image_len: le(56),
-            partition_name,
-            verity_type: le32(144),
-            hash_algo: le32(148),
-            salt_offset: le(152),
-            salt_size: le(160),
-            digest_offset: le(168),
-            digest_size: le(176),
-            raw: buf.to_vec(),
         })
     }
 }
@@ -258,7 +164,7 @@ impl HvbFrame {
         let cert_off = self.footer.cert_offset as usize;
         let cert_len = self.cert.raw.len();
         out[cert_off..cert_off + cert_len].copy_from_slice(&self.cert.raw);
-        out[footer_pos..footer_pos + HVB_FOOTER_SIZE].copy_from_slice(&self.footer.serialize());
+        out[footer_pos..footer_pos + HVB_FOOTER_SIZE].copy_from_slice(&self.footer.to_bytes());
         Ok(out)
     }
 
