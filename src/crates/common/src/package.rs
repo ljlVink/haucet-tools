@@ -270,6 +270,7 @@ fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
     crate::ramdisk::unpack(&image, workspace)
         .with_context(|| format!("unpacking ramdisk image {}", image.display()))
 }
+
 fn validate_partition_name(name: &str) -> Result<()> {
     let mut parts = Path::new(name).components();
     ensure!(

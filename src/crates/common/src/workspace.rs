@@ -8,10 +8,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 
 pub fn make_invoking_user_writable(path: &Path) -> Result<()> {
-    make_invoking_user_writable_impl(path)
-}
-
-fn make_invoking_user_writable_impl(path: &Path) -> Result<()> {
     let effective_uid = unsafe { libc::geteuid() };
     let effective_gid = unsafe { libc::getegid() };
     let identity = if effective_uid == 0 {
