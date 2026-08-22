@@ -1,23 +1,41 @@
 use crate::formats::harmony::HvbFrame;
 use crate::formats::hvb::{HvbCert, HvbWrapper};
-use std::io;
+use crate::formats::rvt;
+use std::fs::File;
+use std::io::{self, Read};
 use std::path::Path;
+
+const RVT_MAGIC: &[u8; 4] = b"rot\0";
 
 pub fn info(image: &Path) -> io::Result<()> {
     match HvbFrame::load(image) {
         Ok(frame) => {
             print_frame_summary(&frame);
-            Ok(())
+            return Ok(());
         }
-        Err(e) if e.to_string().contains("not HARMONY! magic") => {
-            let wrapper = HvbWrapper::read_from(image)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
-                .ok_or_else(|| invalid("not a HARMONY!/HVB partition image"))?;
-            print_wrapper_summary(&wrapper);
-            Ok(())
-        }
-        Err(e) => Err(e),
+        Err(e) if e.to_string().contains("not HARMONY! magic") => {}
+        Err(e) => return Err(e),
     }
+    if starts_with_magic(image, RVT_MAGIC)? {
+        let path = image
+            .to_str()
+            .ok_or_else(|| invalid("path is not valid UTF-8"))?;
+        return rvt::parse_file(path);
+    }
+    if let Some(wrapper) = HvbWrapper::read_from(image)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
+    {
+        print_wrapper_summary(&wrapper);
+        return Ok(());
+    }
+    Err(invalid("not a HARMONY!/HVB/RVT partition image"))
+}
+
+fn starts_with_magic(path: &Path, magic: &[u8; 4]) -> io::Result<bool> {
+    let mut file = File::open(path)?;
+    let mut bytes = [0_u8; 4];
+    let read = file.read(&mut bytes)?;
+    Ok(read == magic.len() && &bytes == magic)
 }
 
 pub fn print_frame_summary(frame: &HvbFrame) {

@@ -3,7 +3,7 @@ use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::{
-    formats::{erofs, rvt},
+    formats::erofs,
     package, ramdisk,
 };
 use std::fs;
@@ -41,10 +41,7 @@ enum Command {
         #[command(subcommand)]
         command: CpioCommands,
     },
-    /// Parse and inspect an RVT image
-    #[command(arg_required_else_help = true)]
-    Rvt { file: PathBuf },
-    /// Print the HARMONY! header and HVB footer/certificate fields of a partition image
+    /// Inspect a partition image: HARMONY!/HVB wrapper or RVT (rot\0) contents
     #[command(arg_required_else_help = true)]
     PartitionInfo { image: PathBuf },
     /// Unpack, repack, patch, or inspect a ramdisk image
@@ -244,13 +241,6 @@ fn run_erofs_command(command: ErofsCommand) -> Result<()> {
     }
 }
 
-fn run_rvt_command(file: PathBuf) -> Result<()> {
-    let file = file
-        .to_str()
-        .with_context(|| format!("RVT path is not valid UTF-8: {}", file.display()))?;
-    Ok(rvt::parse_file(file)?)
-}
-
 fn run_partition_info_command(image: PathBuf) -> Result<()> {
     Ok(common::partition::info(&image)?)
 }
@@ -381,7 +371,6 @@ fn main() {
         Command::UpdateBin { command } => run_update_bin_command(command),
         Command::Erofs { command } => run_erofs_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
-        Command::Rvt { file } => run_rvt_command(file),
         Command::PartitionInfo { image } => run_partition_info_command(image),
         Command::Ramdisk { command } => run_ramdisk_command(command),
     };
