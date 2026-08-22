@@ -1,5 +1,9 @@
-# haucet-tools
+<p align="center">
+  <img src="assets/logo.png" width="150" height="150" alt="Haucet Tools" />
+</p>
 
+
+<h1 align="center">Haucet Tools</h1>
 Rust tools for Huawei/HarmonyOS `update_full_base.zip`, `update.bin`, EROFS partition images, and HVB ramdisk images.
 
 ## Examples
