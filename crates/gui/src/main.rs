@@ -1,18 +1,89 @@
+//! Haucet Tools GUI — 华为/HarmonyOS 镜像工具箱
+//!
+//! The same executable doubles as a background job worker: when spawned with
+//! `HAUCET_GUI_WORKER=1` it reads a job spec from stdin, runs it, and prints
+//! the result as JSON on stdout (see `worker.rs`).
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod app;
+mod detect;
+mod fonts;
 mod job;
-mod model;
+mod pages;
+mod settings;
+mod util;
+mod worker;
 
 use app::HaucetApp;
 use eframe::egui;
+use std::sync::Arc;
 
 fn main() -> eframe::Result<()> {
+    if worker::is_worker_mode() {
+        std::process::exit(worker::run_worker());
+    }
+
+    // 解码头像：既用于窗口图标，也用于快速开始页的 logo 纹理。
+    let (icon, logo_rgba) = load_logo();
+
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1180.0, 800.0])
+        .with_min_inner_size([980.0, 640.0])
+        .with_title("Haucet Tools — 华为/HarmonyOS 镜像工具箱");
+    if let Some(icon) = icon {
+        viewport = viewport.with_icon(Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([960.0, 680.0]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(
-        "haucet-tools",
+        "Haucet Tools",
         options,
-        Box::new(|_cc| Ok(Box::new(HaucetApp::default()))),
+        Box::new(|cc| {
+            let font_loaded = fonts::install_cjk_font(&cc.egui_ctx);
+            Ok(Box::new(HaucetApp::new(cc, font_loaded, logo_rgba)))
+        }),
+    )
+}
+
+/// Load `assets/logo.png` once: window icon data plus RGBA pixels for the UI.
+fn load_logo() -> (Option<egui::IconData>, Option<(Vec<u8>, [usize; 2])>) {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let logo_path = manifest_dir.join("../../assets/logo.png");
+    let bytes = match std::fs::read(&logo_path) {
+        Ok(bytes) => bytes,
+        Err(_) => return (None, None),
+    };
+    let Ok(image) = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png) else {
+        return (None, None);
+    };
+    let rgba = image.to_rgba8();
+    let raw = rgba.as_raw();
+    let raw_width = rgba.width();
+    let height = rgba.height();
+    if raw_width == 0 || height == 0 {
+        return (None, None);
+    }
+    // 窗口图标要求宽度为 4 的倍数；不足则补透明列。
+    let width = (raw_width + 3) & !3;
+    let mut pixels = vec![0_u8; (width * height * 4) as usize];
+    for y in 0..height {
+        for x in 0..raw_width {
+            let src = ((y * raw_width + x) * 4) as usize;
+            let dst = ((y * width + x) * 4) as usize;
+            pixels[dst..dst + 4].copy_from_slice(&raw[src..src + 4]);
+        }
+    }
+    let icon = egui::IconData {
+        rgba: pixels.clone(),
+        width,
+        height,
+    };
+    (
+        Some(icon),
+        Some((pixels, [width as usize, height as usize])),
     )
 }

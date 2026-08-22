@@ -24,6 +24,28 @@ struct PackageManifest {
     unpacked_ramdisks: Vec<String>,
 }
 
+pub fn inspect(input: &Path, layout: UpdateLayout) -> Result<update_bin::PackageIndex> {
+    let file =
+        File::open(input).with_context(|| format!("opening Huawei package {}", input.display()))?;
+    let mut archive = ZipArchive::new(file).context("opening ZIP/ZIP64 archive")?;
+    let mut index = None;
+    for entry_index in 0..archive.len() {
+        let mut entry = archive.by_index(entry_index)?;
+        let enclosed = entry
+            .enclosed_name()
+            .with_context(|| format!("unsafe ZIP entry name {:?}", entry.name()))?;
+        if enclosed.file_name() == Some(OsStr::new("update.bin")) {
+            ensure!(
+                index.is_none(),
+                "archive contains multiple update.bin entries"
+            );
+            let size = entry.size();
+            index = Some(update_bin::read_index(&mut entry, Some(size), layout)?);
+        }
+    }
+    index.context("archive does not contain update.bin")
+}
+
 pub fn unpack_full(
     input: &Path,
     out: &Path,

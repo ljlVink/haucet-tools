@@ -1,169 +1,146 @@
-use crate::model::{LayoutChoice, Operation};
-use anyhow::{Context, Result, ensure};
-use common::formats::update_bin::{self, UpdateLayout};
-use common::tools::ToolPaths;
-use common::{formats::erofs, package, ramdisk};
-use std::fs::{self, File};
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
+//! Parent-side manager for background jobs.
+//!
+//! Each job runs in a fresh child process (this same executable in worker
+//! mode), so heavy work can never freeze or crash the UI, its stderr output
+//! is captured as live log lines, and it can be cancelled.
 
-pub(crate) struct Job {
-    pub(crate) operation: Operation,
-    pub(crate) layout: LayoutChoice,
-    pub(crate) input: String,
-    pub(crate) secondary: String,
-    pub(crate) output: String,
-    pub(crate) tools_dir: String,
-    pub(crate) partitions: String,
-    pub(crate) force: bool,
-    pub(crate) all_erofs: bool,
-    pub(crate) allow_grow: bool,
+use crate::worker::{self, JobOp, JobSpec, WorkerResult};
+use anyhow::{Context, Result};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone)]
+pub enum JobEvent {
+    Log(String),
+    Done(JobResult),
 }
 
-pub(crate) struct JobResult {
-    pub(crate) success: bool,
-    pub(crate) message: String,
+#[derive(Debug, Clone)]
+pub struct JobResult {
+    pub ok: bool,
+    pub cancelled: bool,
+    pub summary: String,
+    pub payload: Option<serde_json::Value>,
 }
 
-pub(crate) fn run(job: Job) -> Result<String> {
-    let input = required_path(&job.input, job.operation.input_label())?;
-    let layout = job.layout.to_update_layout();
-    match job.operation {
-        Operation::FullUnpack => {
-            let output = required_output(&job)?;
-            package::unpack_full_with_tools(
-                &input,
-                &output,
-                &discover_tools(&job)?,
-                &parse_partitions(&job.partitions),
-                job.all_erofs,
-                layout,
-                job.force,
-            )?;
-            Ok(format!("Unpacked package into {}", output.display()))
-        }
-        Operation::UpdateList => format_update_list(&input, layout),
-        Operation::UpdateUnpack => {
-            let output = required_output(&job)?;
-            let components = update_bin::unpack_file(&input, &output, layout, job.force)?;
-            Ok(format!(
-                "Extracted {} components into {}",
-                components.len(),
-                output.display()
-            ))
-        }
-        Operation::ErofsUnpack => {
-            let output = required_output(&job)?;
-            erofs::unpack_with_tools(&input, &output, &discover_tools(&job)?, job.force)?;
-            Ok(format!("Unpacked EROFS image into {}", output.display()))
-        }
-        Operation::ErofsRepack => {
-            let output = required_output(&job)?;
-            erofs::repack_with_tools(&input, &output, &discover_tools(&job)?, job.allow_grow)?;
-            Ok(format!("Repacked EROFS image to {}", output.display()))
-        }
-        Operation::RamdiskUnpack => {
-            let output = required_output(&job)?;
-            prepare_output_dir(&output, job.force)?;
-            let input = canonical_path(&input)?;
-            ramdisk::unpack(&input, &output)?;
-            Ok(format!("Unpacked ramdisk into {}", output.display()))
-        }
-        Operation::RamdiskRepack => {
-            let output = required_output(&job)?;
-            let original = canonical_path(&required_path(&job.secondary, "Original image")?)?;
-            let output_path = absolute_output(&output)?;
-            ramdisk::repack(&input, &original, &output_path)?;
-            Ok(format!("Repacked ramdisk image to {}", output.display()))
-        }
-        Operation::RamdiskPatch => {
-            let output = required_output(&job)?;
-            ramdisk::patch(
-                &input,
-                &required_path(&job.secondary, "Replacement binary")?,
-                &absolute_output(&output)?,
-            )?;
-            Ok(format!("Patched ramdisk image to {}", output.display()))
-        }
+pub struct RunningJob {
+    child: Child,
+    rx: Receiver<JobEvent>,
+    tx: Sender<JobEvent>,
+    started: Instant,
+    pub op: JobOp,
+}
+
+impl RunningJob {
+    /// Non-blocking poll for pending events.
+    pub fn poll(&mut self) -> Option<JobEvent> {
+        self.rx.try_recv().ok()
+    }
+
+    /// Kill the worker child. A `Done(cancelled)` event is queued so the UI
+    /// settles the job on its next poll.
+    pub fn cancel(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = self.tx.send(JobEvent::Done(JobResult {
+            ok: false,
+            cancelled: true,
+            summary: "任务已取消（可能残留部分临时文件）".to_owned(),
+            payload: None,
+        }));
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.started.elapsed()
     }
 }
 
-fn format_update_list(input: &Path, layout: UpdateLayout) -> Result<String> {
-    let file =
-        File::open(input).with_context(|| format!("opening update package {}", input.display()))?;
-    let length = file.metadata()?.len();
-    let mut reader = BufReader::new(file);
-    let index = update_bin::read_index(&mut reader, Some(length), layout)?;
-    let mut report = format!(
-        "layout={:?} components={} data_offset={}\n",
-        index.layout,
-        index.components.len(),
-        index.data_offset
-    );
-    for (number, component) in index.components.iter().enumerate() {
-        report.push_str(&format!(
-            "{:>3}  {:<36} type={} size={} offset={}\n",
-            number + 1,
-            component.output_name,
-            component.component_type,
-            component.size,
-            component.data_offset
-        ));
-    }
-    Ok(report)
-}
+pub fn start(op: JobOp) -> Result<RunningJob> {
+    let spec = JobSpec { op: op.clone() };
+    let mut child = Command::new(std::env::current_exe().context("定位当前可执行文件")?)
+        .env(worker::WORKER_ENV, "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("启动后台工作进程")?;
 
-fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
-    if output.exists() && fs::read_dir(output)?.next().is_some() {
-        ensure!(force, "output directory is not empty: {}", output.display());
-        fs::remove_dir_all(output)
-            .with_context(|| format!("removing old output directory {}", output.display()))?;
-    }
-    fs::create_dir_all(output)?;
-    Ok(())
-}
+    let mut stdin = child.stdin.take().context("无法获取工作进程的标准输入")?;
+    let json = serde_json::to_string(&spec)?;
+    stdin
+        .write_all(json.as_bytes())
+        .context("向工作进程发送任务")?;
+    drop(stdin);
 
-fn discover_tools(job: &Job) -> Result<ToolPaths> {
-    ToolPaths::discover(optional_path(&job.tools_dir))
-}
+    let stdout = child.stdout.take().context("无法获取工作进程的标准输出")?;
+    let stderr = child.stderr.take().context("无法获取工作进程的错误输出")?;
 
-fn required_path(value: &str, label: &str) -> Result<PathBuf> {
-    let trimmed = value.trim();
-    ensure!(!trimmed.is_empty(), "{label} is required");
-    Ok(PathBuf::from(trimmed))
-}
+    let (tx, rx) = mpsc::channel::<JobEvent>();
+    let tx_err = tx.clone();
+    let tx_holder = tx.clone();
 
-fn required_output(job: &Job) -> Result<PathBuf> {
-    required_path(
-        &job.output,
-        job.operation.output_label().unwrap_or("Output path"),
-    )
-}
+    // Protocol reader: stdout carries {"t":"log"|"result"} JSON lines.
+    thread::spawn(move || {
+        let mut saw_result = false;
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            match value.get("t").and_then(|t| t.as_str()) {
+                Some("log") => {
+                    if let Some(text) = value.get("s").and_then(|s| s.as_str()) {
+                        let _ = tx.send(JobEvent::Log(text.to_owned()));
+                    }
+                }
+                Some("result") => {
+                    let result = serde_json::from_value::<WorkerResult>(value)
+                        .map(|r| JobResult {
+                            ok: r.ok,
+                            cancelled: false,
+                            summary: r.summary,
+                            payload: r.payload,
+                        })
+                        .unwrap_or_else(|_| JobResult {
+                            ok: false,
+                            cancelled: false,
+                            summary: "工作进程返回了无法解析的结果".to_owned(),
+                            payload: None,
+                        });
+                    let _ = tx.send(JobEvent::Done(result));
+                    saw_result = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if !saw_result {
+            let _ = tx.send(JobEvent::Done(JobResult {
+                ok: false,
+                cancelled: false,
+                summary: "工作进程异常退出，未返回结果".to_owned(),
+                payload: None,
+            }));
+        }
+    });
 
-fn optional_path(value: &str) -> Option<PathBuf> {
-    (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
-}
+    // stderr forwarder: the library's progress output lands here verbatim.
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let trimmed = line.trim_end();
+            if !trimmed.is_empty() {
+                let _ = tx_err.send(JobEvent::Log(trimmed.to_owned()));
+            }
+        }
+    });
 
-fn parse_partitions(value: &str) -> Vec<String> {
-    value
-        .split(|character: char| character == ',' || character.is_whitespace())
-        .filter(|part| !part.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-fn canonical_path(path: &Path) -> Result<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("resolving {}", path.display()))
-}
-
-fn absolute_output(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        return Ok(path.to_owned());
-    }
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = path
-        .file_name()
-        .context("output path must include a file name")?;
-    Ok(canonical_path(parent)?.join(file_name))
+    Ok(RunningJob {
+        child,
+        rx,
+        tx: tx_holder,
+        started: Instant::now(),
+        op,
+    })
 }

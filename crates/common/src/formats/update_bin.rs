@@ -20,7 +20,7 @@ const MAX_COMPONENTS: usize = 4096;
 const MAX_METADATA_TLV: u64 = 512 * 1024 * 1024;
 const IO_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateLayout {
     #[default]
     Auto,
@@ -80,7 +80,7 @@ pub struct Component {
     pub data_offset: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageIndex {
     pub layout: UpdateLayout,
     pub data_offset: u64,
@@ -124,6 +124,52 @@ pub fn unpack_file(
     let length = file.metadata()?.len();
     let reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
     unpack_reader(reader, Some(length), out, layout, force)
+}
+
+pub fn unpack_selected_file(
+    input: &Path,
+    out: &Path,
+    selected: &[String],
+    layout: UpdateLayout,
+    force: bool,
+) -> Result<Vec<Component>> {
+    ensure!(
+        !selected.is_empty(),
+        "no components selected for extraction"
+    );
+    let file =
+        File::open(input).with_context(|| format!("opening update package {}", input.display()))?;
+    let length = file.metadata()?.len();
+    let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
+    let index = read_index(&mut reader, Some(length), layout)?;
+
+    let mut chosen: Vec<&Component> = Vec::new();
+    for raw_name in selected {
+        let name = raw_name.trim().trim_end_matches(".img");
+        let component = index
+            .components
+            .iter()
+            .find(|component| component.name == name || component.output_name == name)
+            .with_context(|| format!("partition {name:?} is not present in update.bin"))?;
+        if !chosen
+            .iter()
+            .any(|existing| existing.name == component.name)
+        {
+            chosen.push(component);
+        }
+    }
+    chosen.sort_by_key(|component| component.data_offset);
+    for (position, component) in chosen.iter().enumerate() {
+        eprintln!(
+            "[{}/{}] extracting {} ({} bytes)",
+            position + 1,
+            chosen.len(),
+            component.output_name,
+            component.size
+        );
+        write_component(&mut reader, out, component, position, force)?;
+    }
+    Ok(chosen.into_iter().cloned().collect())
 }
 
 pub fn unpack_reader<R: Read>(
