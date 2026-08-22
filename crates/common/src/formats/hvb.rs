@@ -46,7 +46,7 @@ impl HvbFooter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HvbCert {
     pub version_major: u32,
     pub version_minor: u32,

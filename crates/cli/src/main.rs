@@ -2,10 +2,7 @@ use anyhow::{Context, Result, ensure};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
-use common::{
-    formats::erofs,
-    package, ramdisk,
-};
+use common::{formats::erofs, package, ramdisk};
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -11,9 +11,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+common = { path = "../common" }
 eframe.workspace = true
 egui.workspace = true
-common = { path = "../common" }
+egui_extras = { version = "0.32", default-features = false, features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 
 # The X11 backend only exists on Unix; on Windows eframe uses its native
 # (WGL/OpenGL via glow) backend.
