@@ -17,8 +17,6 @@ const ANSI_RESET: &str = "\x1b[0m";
 #[derive(Debug, Parser)]
 #[command(version, about, arg_required_else_help = true)]
 pub struct Cli {
-    #[arg(long, global = true, value_name = "DIR")]
-    tools_dir: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -218,53 +216,10 @@ enum CpioCommands {
 }
 
 pub fn run(cli: Cli) -> Result<()> {
-    let tools_dir = cli.tools_dir;
     match cli.command {
-        Command::Unpack(args) => {
-            let tools = ToolPaths::discover(tools_dir)?;
-            package::unpack_full(
-                &args.input,
-                &args.out,
-                &tools,
-                &args.partitions,
-                args.all_erofs,
-                args.layout,
-                args.force,
-            )?;
-            finish_unpack(&args.out, args.skip_chown)
-        }
-        Command::UpdateBin { command } => match command {
-            UpdateBinCommand::List { input, layout } => update_bin::list_file(&input, layout),
-            UpdateBinCommand::Unpack {
-                input,
-                out,
-                layout,
-                force,
-                skip_chown,
-            } => {
-                update_bin::unpack_file(&input, &out, layout, force)?;
-                finish_unpack(&out, skip_chown)
-            }
-        },
-        Command::Erofs { command } => {
-            let tools = ToolPaths::discover(tools_dir)?;
-            match command {
-                ErofsCommand::Unpack {
-                    image,
-                    out,
-                    force,
-                    skip_chown,
-                } => {
-                    erofs::unpack(&image, &out, &tools, force)?;
-                    finish_unpack(&out, skip_chown)
-                }
-                ErofsCommand::Repack {
-                    workspace,
-                    output,
-                    allow_grow,
-                } => erofs::repack(&workspace, &output, &tools, allow_grow),
-            }
-        }
+        Command::Unpack(args) => run_unpack_command(args),
+        Command::UpdateBin { command } => run_update_bin_command(command),
+        Command::Erofs { command } => run_erofs_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::Rvt { file } => {
             let file = file
@@ -273,6 +228,54 @@ pub fn run(cli: Cli) -> Result<()> {
             Ok(rvt::parse_file(file)?)
         }
         Command::Ramdisk { command } => run_ramdisk_command(command),
+    }
+}
+fn run_unpack_command(args: FullUnpackArgs) -> Result<()> {
+    let tools = bundled_tools();
+    package::unpack_full(
+        &args.input,
+        &args.out,
+        &tools,
+        &args.partitions,
+        args.all_erofs,
+        args.layout,
+        args.force,
+    )?;
+    finish_unpack(&args.out, args.skip_chown)
+}
+fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
+    match command {
+        UpdateBinCommand::List { input, layout } => update_bin::list_file(&input, layout),
+        UpdateBinCommand::Unpack {
+            input,
+            out,
+            layout,
+            force,
+            skip_chown,
+        } => {
+            update_bin::unpack_file(&input, &out, layout, force)?;
+            finish_unpack(&out, skip_chown)
+        }
+    }
+}
+
+fn run_erofs_command(command: ErofsCommand) -> Result<()> {
+    let tools = bundled_tools();
+    match command {
+        ErofsCommand::Unpack {
+            image,
+            out,
+            force,
+            skip_chown,
+        } => {
+            erofs::unpack(&image, &out, &tools, force)?;
+            finish_unpack(&out, skip_chown)
+        }
+        ErofsCommand::Repack {
+            workspace,
+            output,
+            allow_grow,
+        } => erofs::repack(&workspace, &output, &tools, allow_grow),
     }
 }
 
@@ -346,6 +349,11 @@ fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
         std::process::exit(status);
     }
     Ok(())
+}
+
+fn bundled_tools() -> ToolPaths {
+    ToolPaths::discover(None)
+        .unwrap_or_else(|error| panic!("required bundled tools are unavailable: {error:#}"))
 }
 
 fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {

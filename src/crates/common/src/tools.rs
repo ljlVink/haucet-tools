@@ -48,7 +48,7 @@ fn default_tools_dir() -> Result<PathBuf> {
             .context("resolving bundled Linux tools");
     }
 
-    bail!("could not locate bin; pass --tools-dir <DIR>")
+    bail!("required EROFS tools were not found in bin/: expected extract.erofs and mkfs.erofs")
 }
 
 fn has_tools(directory: &Path) -> bool {

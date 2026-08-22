@@ -22,7 +22,7 @@ haucet-tools cpio ramdisk.cpio ls --recursive /
 ## Build
 
 The binary uses `bin/extract.erofs` and `bin/mkfs.erofs` from this
-repository. Pass `--tools-dir DIR` when running it from another location.
+repository. Keep the binary beside this repository so it can locate `bin/`.
 
 ```sh
 cargo build --release
