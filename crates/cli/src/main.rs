@@ -44,6 +44,9 @@ enum Command {
     /// Parse and inspect an RVT image
     #[command(arg_required_else_help = true)]
     Rvt { file: PathBuf },
+    /// Print the HARMONY! header and HVB footer/certificate fields of a partition image
+    #[command(arg_required_else_help = true)]
+    PartitionInfo { image: PathBuf },
     /// Unpack, repack, patch, or inspect a ramdisk image
     #[command(arg_required_else_help = true)]
     Ramdisk {
@@ -132,8 +135,6 @@ enum RamdiskCommand {
         #[arg(short, long)]
         out: PathBuf,
     },
-    /// Print the HARMONY! header and HVB footer/certificate fields
-    Info { image: PathBuf },
 }
 
 #[derive(Debug, Subcommand)]
@@ -250,6 +251,10 @@ fn run_rvt_command(file: PathBuf) -> Result<()> {
     Ok(rvt::parse_file(file)?)
 }
 
+fn run_partition_info_command(image: PathBuf) -> Result<()> {
+    Ok(common::partition::info(&image)?)
+}
+
 fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
     let file_str = file
         .to_str()
@@ -340,7 +345,6 @@ fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
             Ok(ramdisk::repack(&workspace, &original_image, &out)?)
         }
         RamdiskCommand::Patch { image, binary, out } => Ok(ramdisk::patch(&image, &binary, &out)?),
-        RamdiskCommand::Info { image } => Ok(ramdisk::info(&image)?),
     }
 }
 
@@ -378,6 +382,7 @@ fn main() {
         Command::Erofs { command } => run_erofs_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::Rvt { file } => run_rvt_command(file),
+        Command::PartitionInfo { image } => run_partition_info_command(image),
         Command::Ramdisk { command } => run_ramdisk_command(command),
     };
 

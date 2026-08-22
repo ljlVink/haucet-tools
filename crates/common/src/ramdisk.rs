@@ -108,7 +108,7 @@ pub fn patch(image_path: &Path, hsu_path: &Path, out_path: &Path) -> io::Result<
 pub fn unpack(image_path: &Path, workspace: &Path) -> io::Result<()> {
     let frame = HvbFrame::load(image_path)?;
 
-    print_frame_summary(&frame);
+    crate::partition::print_frame_summary(&frame);
 
     let payload = frame.extract_image_payload();
     if payload.is_empty() {
@@ -158,12 +158,6 @@ pub fn repack(workspace: &Path, orig_path: &Path, out_path: &Path) -> io::Result
     rebuild_image(&mut frame, &orig_payload, &cpio_bytes, out_path)
 }
 
-pub fn info(image: &Path) -> io::Result<()> {
-    let frame = HvbFrame::load(image)?;
-    print_frame_summary(&frame);
-    Ok(())
-}
-
 fn path_str(path: &Path) -> io::Result<&str> {
     path.to_str().ok_or_else(|| {
         io::Error::new(
@@ -171,52 +165,6 @@ fn path_str(path: &Path) -> io::Result<&str> {
             format!("path is not valid UTF-8: {}", path.display()),
         )
     })
-}
-
-fn print_frame_summary(frame: &HvbFrame) {
-    eprintln!("--- HARMONY! header ---");
-    eprintln!("  hdr_size     = 0x{:X}", frame.harmony.hdr_size);
-    eprintln!("  image_size   = 0x{:X}", frame.harmony.image_size);
-    eprintln!("  flags        = 0x{:X}", frame.harmony.flags);
-    eprintln!("  buildvariant = {:?}", frame.harmony.buildvariant);
-    eprintln!("--- HVB footer ---");
-    eprintln!("  cert_offset    = 0x{:X}", frame.footer.cert_offset);
-    eprintln!("  cert_size      = {}", frame.footer.cert_size);
-    eprintln!("  image_size     = 0x{:X}", frame.footer.image_size);
-    eprintln!("  partition_size = 0x{:X}", frame.footer.partition_size);
-    eprintln!("--- HVB cert ---");
-    eprintln!(
-        "  version           = {}.{}",
-        frame.cert.version_major, frame.cert.version_minor
-    );
-    eprintln!("  partition_name    = {:?}", frame.cert.partition_name);
-    eprintln!(
-        "  image_original_len= 0x{:X}",
-        frame.cert.image_original_len
-    );
-    eprintln!("  image_len         = 0x{:X}", frame.cert.image_len);
-    eprintln!(
-        "  verity_type       = {} ({})",
-        frame.cert.verity_type,
-        match frame.cert.verity_type {
-            1 => "hash",
-            2 => "hashtree",
-            _ => "?",
-        }
-    );
-    eprintln!(
-        "  hash_algo         = {} ({})",
-        frame.cert.hash_algo,
-        match frame.cert.hash_algo {
-            0 => "SHA256",
-            1 => "SHA128",
-            2 => "SHA512",
-            3 => "SM3",
-            _ => "?",
-        }
-    );
-    eprintln!("  salt_size         = {}", frame.cert.salt_size);
-    eprintln!("  digest_size       = {}", frame.cert.digest_size);
 }
 
 fn frame_to_json(frame: &HvbFrame) -> String {
