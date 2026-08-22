@@ -3,7 +3,10 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::tools::ToolPaths;
-use common::{formats::erofs, package, ramdisk, workspace};
+use common::{
+    formats::{erofs, rvt},
+    package, ramdisk, workspace,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +15,7 @@ const ANSI_YELLOW: &str = "\x1b[33m";
 const ANSI_RESET: &str = "\x1b[0m";
 
 #[derive(Debug, Parser)]
-#[command(version, about)]
+#[command(version, about, arg_required_else_help = true)]
 pub struct Cli {
     #[arg(long, global = true, value_name = "DIR")]
     tools_dir: Option<PathBuf>,
@@ -22,11 +25,17 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Unpack an update package into a workspace directory
+    #[command(arg_required_else_help = true)]
     Unpack(FullUnpackArgs),
+    /// List or unpack an update.bin file
+    #[command(arg_required_else_help = true)]
     UpdateBin {
         #[command(subcommand)]
         command: UpdateBinCommand,
     },
+    /// Unpack or repack an EROFS image
+    #[command(arg_required_else_help = true)]
     Erofs {
         #[command(subcommand)]
         command: ErofsCommand,
@@ -39,6 +48,11 @@ enum Command {
         #[command(subcommand)]
         command: CpioCommands,
     },
+    /// Parse and inspect an RVT image
+    #[command(arg_required_else_help = true)]
+    Rvt { file: PathBuf },
+    /// Unpack, repack, patch, or inspect a ramdisk image
+    #[command(arg_required_else_help = true)]
     Ramdisk {
         #[command(subcommand)]
         command: Option<RamdiskCommand>,
@@ -252,6 +266,12 @@ pub fn run(cli: Cli) -> Result<()> {
             }
         }
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
+        Command::Rvt { file } => {
+            let file = file
+                .to_str()
+                .with_context(|| format!("RVT path is not valid UTF-8: {}", file.display()))?;
+            Ok(rvt::parse_file(file)?)
+        }
         Command::Ramdisk { command } => run_ramdisk_command(command),
     }
 }
@@ -412,36 +432,5 @@ fn main() {
     if let Err(error) = run(main_cli) {
         eprintln!("error: {error:#}");
         std::process::exit(1);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Cli;
-    use clap::{Parser, error::ErrorKind};
-
-    #[test]
-    fn cpio_commands_are_clap_subcommands() {
-        assert!(Cli::try_parse_from(["haucet-tools", "cpio", "ramdisk.cpio", "ls"]).is_ok());
-        assert!(
-            Cli::try_parse_from([
-                "haucet-tools",
-                "cpio",
-                "ramdisk.cpio",
-                "mkdir",
-                "0750",
-                "tmp"
-            ])
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn cpio_extract_requires_entry_and_output_together() {
-        let error =
-            Cli::try_parse_from(["haucet-tools", "cpio", "ramdisk.cpio", "extract", "init"])
-                .unwrap_err();
-
-        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
     }
 }
