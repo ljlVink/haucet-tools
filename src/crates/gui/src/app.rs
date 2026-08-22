@@ -14,7 +14,6 @@ pub(crate) struct HaucetApp {
     tools_dir: String,
     partitions: String,
     force: bool,
-    skip_chown: bool,
     all_erofs: bool,
     allow_grow: bool,
     receiver: Option<Receiver<JobResult>>,
@@ -33,7 +32,6 @@ impl Default for HaucetApp {
             tools_dir: String::new(),
             partitions: String::new(),
             force: false,
-            skip_chown: false,
             all_erofs: false,
             allow_grow: false,
             receiver: None,
@@ -122,9 +120,6 @@ impl HaucetApp {
     fn options(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut self.force, "Force");
-            if self.operation.needs_skip_chown() {
-                ui.checkbox(&mut self.skip_chown, "Skip chown");
-            }
             if matches!(self.operation, Operation::FullUnpack) {
                 ui.checkbox(&mut self.all_erofs, "All EROFS");
             }
@@ -258,7 +253,6 @@ impl HaucetApp {
             tools_dir: self.tools_dir.clone(),
             partitions: self.partitions.clone(),
             force: self.force,
-            skip_chown: self.skip_chown,
             all_erofs: self.all_erofs,
             allow_grow: self.allow_grow,
         };

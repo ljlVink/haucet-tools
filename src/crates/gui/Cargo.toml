@@ -14,3 +14,8 @@ anyhow.workspace = true
 eframe.workspace = true
 egui.workspace = true
 common = { path = "../common" }
+
+# The X11 backend only exists on Unix; on Windows eframe uses its native
+# (WGL/OpenGL via glow) backend.
+[target.'cfg(unix)'.dependencies]
+eframe = { workspace = true, features = ["x11"] }

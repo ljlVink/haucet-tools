@@ -86,10 +86,16 @@ where
     result
 }
 
+#[cfg(unix)]
 pub fn set_unix_mode(path: &Path, mode: Option<u32>) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     if let Some(mode) = mode {
         fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o777))?;
     }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn set_unix_mode(_path: &Path, _mode: Option<u32>) -> Result<()> {
     Ok(())
 }

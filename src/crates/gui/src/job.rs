@@ -2,7 +2,7 @@ use crate::model::{LayoutChoice, Operation};
 use anyhow::{Context, Result, ensure};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::tools::ToolPaths;
-use common::{formats::erofs, package, ramdisk, workspace};
+use common::{formats::erofs, package, ramdisk};
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,6 @@ pub(crate) struct Job {
     pub(crate) tools_dir: String,
     pub(crate) partitions: String,
     pub(crate) force: bool,
-    pub(crate) skip_chown: bool,
     pub(crate) all_erofs: bool,
     pub(crate) allow_grow: bool,
 }
@@ -41,14 +40,12 @@ pub(crate) fn run(job: Job) -> Result<String> {
                 layout,
                 job.force,
             )?;
-            finish_unpack(&output, job.skip_chown)?;
             Ok(format!("Unpacked package into {}", output.display()))
         }
         Operation::UpdateList => format_update_list(&input, layout),
         Operation::UpdateUnpack => {
             let output = required_output(&job)?;
             let components = update_bin::unpack_file(&input, &output, layout, job.force)?;
-            finish_unpack(&output, job.skip_chown)?;
             Ok(format!(
                 "Extracted {} components into {}",
                 components.len(),
@@ -58,7 +55,6 @@ pub(crate) fn run(job: Job) -> Result<String> {
         Operation::ErofsUnpack => {
             let output = required_output(&job)?;
             erofs::unpack_with_tools(&input, &output, &discover_tools(&job)?, job.force)?;
-            finish_unpack(&output, job.skip_chown)?;
             Ok(format!("Unpacked EROFS image into {}", output.display()))
         }
         Operation::ErofsRepack => {
@@ -71,7 +67,6 @@ pub(crate) fn run(job: Job) -> Result<String> {
             prepare_output_dir(&output, job.force)?;
             let input = canonical_path(&input)?;
             ramdisk::unpack(&input, &output)?;
-            finish_unpack(&output, job.skip_chown)?;
             Ok(format!("Unpacked ramdisk into {}", output.display()))
         }
         Operation::RamdiskRepack => {
@@ -130,14 +125,6 @@ fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
 
 fn discover_tools(job: &Job) -> Result<ToolPaths> {
     ToolPaths::discover(optional_path(&job.tools_dir))
-}
-
-fn finish_unpack(path: &Path, skip_chown: bool) -> Result<()> {
-    if skip_chown {
-        Ok(())
-    } else {
-        workspace::make_invoking_user_writable(path)
-    }
 }
 
 fn required_path(value: &str, label: &str) -> Result<PathBuf> {

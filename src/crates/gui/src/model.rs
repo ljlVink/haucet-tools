@@ -73,13 +73,6 @@ impl Operation {
             Self::FullUnpack | Self::UpdateList | Self::UpdateUnpack
         )
     }
-
-    pub(crate) fn needs_skip_chown(self) -> bool {
-        matches!(
-            self,
-            Self::FullUnpack | Self::UpdateUnpack | Self::ErofsUnpack | Self::RamdiskUnpack
-        )
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

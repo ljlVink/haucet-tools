@@ -4,14 +4,10 @@ use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::{
     formats::{erofs, rvt},
-    package, ramdisk, workspace,
+    package, ramdisk,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
-
-const ANSI_RED: &str = "\x1b[31m";
-const ANSI_YELLOW: &str = "\x1b[33m";
-const ANSI_RESET: &str = "\x1b[0m";
 
 #[derive(Debug, Parser)]
 #[command(version, about, arg_required_else_help = true)]
@@ -69,8 +65,6 @@ struct FullUnpackArgs {
     layout: UpdateLayout,
     #[arg(long)]
     force: bool,
-    #[arg(long, help = "Keep extracted ownership and modes unchanged")]
-    skip_chown: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -90,8 +84,6 @@ enum UpdateBinCommand {
         layout: UpdateLayout,
         #[arg(long)]
         force: bool,
-        #[arg(long, help = "Keep extracted ownership and modes unchanged")]
-        skip_chown: bool,
     },
 }
 
@@ -104,8 +96,6 @@ enum ErofsCommand {
         out: PathBuf,
         #[arg(long)]
         force: bool,
-        #[arg(long, help = "Keep extracted ownership and modes unchanged")]
-        skip_chown: bool,
     },
     /// Repack an EROFS workspace into an image
     Repack {
@@ -126,8 +116,6 @@ enum RamdiskCommand {
         out: PathBuf,
         #[arg(long)]
         force: bool,
-        #[arg(long, help = "Keep extracted ownership and modes unchanged")]
-        skip_chown: bool,
     },
     /// Repack a ramdisk workspace using its original image
     Repack {
@@ -223,7 +211,7 @@ fn run_unpack_command(args: FullUnpackArgs) -> Result<()> {
         args.layout,
         args.force,
     )?;
-    finish_unpack(&args.out, args.skip_chown)
+    Ok(())
 }
 
 fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
@@ -234,24 +222,18 @@ fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
             out,
             layout,
             force,
-            skip_chown,
         } => {
             update_bin::unpack_file(&input, &out, layout, force)?;
-            finish_unpack(&out, skip_chown)
+            Ok(())
         }
     }
 }
 
 fn run_erofs_command(command: ErofsCommand) -> Result<()> {
     match command {
-        ErofsCommand::Unpack {
-            image,
-            out,
-            force,
-            skip_chown,
-        } => {
+        ErofsCommand::Unpack { image, out, force } => {
             erofs::unpack(&image, &out, force)?;
-            finish_unpack(&out, skip_chown)
+            Ok(())
         }
         ErofsCommand::Repack {
             workspace,
@@ -342,16 +324,10 @@ fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
 
 fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
     match command {
-        RamdiskCommand::Unpack {
-            image,
-            out,
-            force,
-            skip_chown,
-        } => {
+        RamdiskCommand::Unpack { image, out, force } => {
             let image = canonical_path(&image)?;
             prepare_output_dir(&out, force)?;
-            ramdisk::unpack(&image, &out)?;
-            finish_unpack(&out, skip_chown)
+            Ok(ramdisk::unpack(&image, &out)?)
         }
         RamdiskCommand::Repack {
             workspace,
@@ -395,23 +371,7 @@ fn parse_update_layout(value: &str) -> std::result::Result<UpdateLayout, String>
     value.parse()
 }
 
-fn finish_unpack(out: &std::path::Path, skip_chown: bool) -> Result<()> {
-    if skip_chown {
-        Ok(())
-    } else {
-        workspace::make_invoking_user_writable(out)
-    }
-}
-
 fn main() {
-    if unsafe { libc::geteuid() == 0 } {
-        eprintln!("{ANSI_RED}You are currently in root mode, use it at risk.{ANSI_RESET}");
-    } else {
-        eprintln!(
-            "{ANSI_YELLOW}You are currently not in root mode, extract may cause permission problems.{ANSI_RESET}"
-        );
-    }
-
     let result = match Cli::parse().command {
         Command::Unpack(args) => run_unpack_command(args),
         Command::UpdateBin { command } => run_update_bin_command(command),

@@ -8,6 +8,11 @@ pub struct ToolPaths {
     pub mkfs_erofs: PathBuf,
 }
 
+#[cfg(windows)]
+const TOOL_SUFFIX: &str = ".exe";
+#[cfg(not(windows))]
+const TOOL_SUFFIX: &str = "";
+
 impl ToolPaths {
     pub fn discover(explicit: Option<PathBuf>) -> Result<Self> {
         let directory = match explicit {
@@ -15,8 +20,8 @@ impl ToolPaths {
             None => default_tools_dir()?,
         };
         let paths = Self {
-            extract_erofs: directory.join("extract.erofs"),
-            mkfs_erofs: directory.join("mkfs.erofs"),
+            extract_erofs: directory.join(format!("extract.erofs{TOOL_SUFFIX}")),
+            mkfs_erofs: directory.join(format!("mkfs.erofs{TOOL_SUFFIX}")),
         };
         paths.validate()?;
         Ok(paths)
@@ -45,12 +50,17 @@ fn default_tools_dir() -> Result<PathBuf> {
     if has_tools(&manifest_candidate) {
         return manifest_candidate
             .canonicalize()
-            .context("resolving bundled Linux tools");
+            .context("resolving bundled EROFS tools");
     }
 
-    bail!("required EROFS tools were not found in bin/: expected extract.erofs and mkfs.erofs")
+    bail!(
+        "required EROFS tools were not found in bin/: expected extract.erofs{TOOL_SUFFIX} and mkfs.erofs{TOOL_SUFFIX}"
+    )
 }
 
 fn has_tools(directory: &Path) -> bool {
-    directory.join("extract.erofs").is_file() && directory.join("mkfs.erofs").is_file()
+    directory
+        .join(format!("extract.erofs{TOOL_SUFFIX}"))
+        .is_file()
+        && directory.join(format!("mkfs.erofs{TOOL_SUFFIX}")).is_file()
 }
