@@ -1,12 +1,12 @@
 [workspace]
 members = [
-    "src/crates/common",
-    "src/crates/cli",
-    "src/crates/gui",
+    "crates/common",
+    "crates/cli",
+    "crates/gui",
 ]
 default-members = [
-    "src/crates/cli",
-    "src/crates/gui",
+    "crates/cli",
+    "crates/gui",
 ]
 resolver = "3"
 
