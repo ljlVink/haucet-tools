@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, ensure};
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::tools::ToolPaths;
 use common::{formats::erofs, package, ramdisk, workspace};
@@ -9,24 +10,6 @@ use std::path::{Path, PathBuf};
 const ANSI_RED: &str = "\x1b[31m";
 const ANSI_YELLOW: &str = "\x1b[33m";
 const ANSI_RESET: &str = "\x1b[0m";
-const CPIO_LONG_ABOUT: &str = "Run commands on a cpio archive and save modifications in place.
-
-Each command must be passed as one quoted argument.
-
-Commands:
-  exists ENTRY            exit 0 if the entry exists, otherwise 1
-  ls [-r] [PATH]          list entries
-  rm [-r] ENTRY           remove an entry
-  mkdir MODE ENTRY        create a directory
-  ln SRC DST              create a symbolic link
-  mv SRC DST              move an entry
-  add MODE ENTRY INFILE   add a file
-  extract [ENTRY OUT]     extract all entries or one entry
-  test                    exit 0 for stock, 1 for patched, or 2 unsupported
-
-Examples:
-  haucet-tools ramdisk cpio ramdisk.cpio \"ls -r /\"
-  haucet-tools ramdisk cpio ramdisk.cpio \"rm -r path\" \"add 0750 path file\"";
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -47,6 +30,14 @@ enum Command {
     Erofs {
         #[command(subcommand)]
         command: ErofsCommand,
+    },
+    /// Run commands on a cpio archive and save changes in place
+    #[command(arg_required_else_help = true)]
+    Cpio {
+        /// Input cpio archive, modified in place
+        incpio: PathBuf,
+        #[command(subcommand)]
+        command: CpioCommands,
     },
     Ramdisk {
         #[command(subcommand)]
@@ -73,11 +64,13 @@ struct FullUnpackArgs {
 
 #[derive(Debug, Subcommand)]
 enum UpdateBinCommand {
+    /// List the contents of an update binary
     List {
         input: PathBuf,
         #[arg(long, value_enum, default_value_t = UpdateLayout::Auto)]
         layout: UpdateLayout,
     },
+    /// Unpack an update binary into a workspace directory
     Unpack {
         input: PathBuf,
         #[arg(short, long)]
@@ -93,6 +86,7 @@ enum UpdateBinCommand {
 
 #[derive(Debug, Subcommand)]
 enum ErofsCommand {
+    /// Unpack an EROFS image into a workspace directory
     Unpack {
         image: PathBuf,
         #[arg(short, long)]
@@ -102,6 +96,7 @@ enum ErofsCommand {
         #[arg(long, help = "Keep extracted ownership and modes unchanged")]
         skip_chown: bool,
     },
+    /// Repack an EROFS workspace into an image
     Repack {
         workspace: PathBuf,
         #[arg(short, long)]
@@ -138,21 +133,74 @@ enum RamdiskCommand {
         #[arg(short, long)]
         out: PathBuf,
     },
-    /// Run commands on a cpio archive and save it in place
-    #[command(long_about = CPIO_LONG_ABOUT)]
-    Cpio {
-        #[arg(help = "Input cpio archive, modified in place")]
-        incpio: PathBuf,
-        #[arg(
-            value_name = "COMMAND",
-            help = "Quoted cpio command; may be repeated",
-            trailing_var_arg = true,
-            allow_hyphen_values = true
-        )]
-        commands: Vec<String>,
-    },
     /// Print the HARMONY! header and HVB footer/certificate fields
     Info { image: PathBuf },
+}
+
+#[derive(Debug, Subcommand)]
+enum CpioCommands {
+    /// Exit 0 if an entry exists, otherwise 1
+    Exists {
+        /// Archive entry to check
+        entry: String,
+    },
+    /// List entries in the archive
+    Ls {
+        /// List entries recursively
+        #[arg(short = 'r', long)]
+        recursive: bool,
+        /// Entry path; defaults to `/`
+        path: Option<String>,
+    },
+    /// Remove an entry from the archive
+    Rm {
+        /// Remove recursively
+        #[arg(short = 'r', long)]
+        recursive: bool,
+        /// Archive entry to remove
+        entry: String,
+    },
+    /// Create a directory in the archive
+    Mkdir {
+        /// Directory mode in octal, such as `0750`
+        mode: String,
+        /// Directory entry to create
+        entry: String,
+    },
+    /// Create a symbolic link in the archive
+    Ln {
+        /// Link target
+        src: String,
+        /// Link entry to create
+        dst: String,
+    },
+    /// Move an entry in the archive
+    Mv {
+        /// Source entry
+        src: String,
+        /// Destination entry
+        dst: String,
+    },
+    /// Add a file to the archive
+    Add {
+        /// File mode in octal, such as `0750`
+        mode: String,
+        /// Archive entry to create
+        entry: String,
+        /// Input file on the host filesystem
+        infile: String,
+    },
+    /// Extract all entries or one entry from the archive
+    Extract {
+        /// Archive entry to extract; omit together with OUT to extract everything
+        #[arg(requires = "out")]
+        entry: Option<String>,
+        /// Host path to write the extracted entry to
+        #[arg(requires = "entry")]
+        out: Option<String>,
+    },
+    /// Exit 0 for stock, 1 for patched, or 2 for unsupported
+    Test,
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -203,8 +251,81 @@ pub fn run(cli: Cli) -> Result<()> {
                 } => erofs::repack(&workspace, &output, &tools, allow_grow),
             }
         }
+        Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::Ramdisk { command } => run_ramdisk_command(command),
     }
+}
+
+fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
+    let file_str = file
+        .to_str()
+        .with_context(|| format!("cpio path is not valid UTF-8: {}", file.display()))?;
+    let mut cpio = if file.exists() {
+        Cpio::load_from_file(file_str)?
+    } else {
+        Cpio::new()
+    };
+
+    let status = match command {
+        CpioCommands::Exists { entry } => i32::from(!cpio.exists(&entry)),
+        CpioCommands::Ls { recursive, path } => {
+            cpio.ls(path.as_deref().unwrap_or("/"), recursive);
+            0
+        }
+        CpioCommands::Rm { recursive, entry } => {
+            cpio.rm(&entry, recursive);
+            cpio.dump(file_str)?;
+            0
+        }
+        CpioCommands::Mkdir { mode, entry } => {
+            cpio.mkdir(parse_cpio_mode(&mode)?, &entry);
+            cpio.dump(file_str)?;
+            0
+        }
+        CpioCommands::Ln { src, dst } => {
+            cpio.ln(&src, &dst);
+            cpio.dump(file_str)?;
+            0
+        }
+        CpioCommands::Mv { src, dst } => {
+            cpio.mv(&src, &dst)?;
+            cpio.dump(file_str)?;
+            0
+        }
+        CpioCommands::Add {
+            mode,
+            entry,
+            infile,
+        } => {
+            cpio.add(parse_cpio_mode(&mode)?, &entry, &infile)?;
+            cpio.dump(file_str)?;
+            0
+        }
+        CpioCommands::Extract { entry, out } => {
+            match (entry.as_deref(), out.as_deref()) {
+                (None, None) => {
+                    cpio.extract(&[])?;
+                }
+                (Some(entry), Some(out)) => cpio.extract(&[entry, out])?,
+                _ => unreachable!("clap requires extract entry and output together"),
+            }
+            0
+        }
+        CpioCommands::Test => {
+            if cpio.exists(".backup/init_early") {
+                1
+            } else if cpio.exists("bin/init_early") || cpio.exists("init") {
+                0
+            } else {
+                2
+            }
+        }
+    };
+
+    if status != 0 {
+        std::process::exit(status);
+    }
+    Ok(())
 }
 
 fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {
@@ -233,13 +354,6 @@ fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {
         }
         Some(RamdiskCommand::Patch { image, binary, out }) => {
             Ok(ramdisk::patch(&image, &binary, &out)?)
-        }
-        Some(RamdiskCommand::Cpio { incpio, commands }) => {
-            let status = ramdisk::edit_cpio(&incpio, &commands)?;
-            if status != 0 {
-                std::process::exit(status);
-            }
-            Ok(())
         }
         Some(RamdiskCommand::Info { image }) => Ok(ramdisk::info(&image)?),
     }
@@ -298,5 +412,36 @@ fn main() {
     if let Err(error) = run(main_cli) {
         eprintln!("error: {error:#}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::{Parser, error::ErrorKind};
+
+    #[test]
+    fn cpio_commands_are_clap_subcommands() {
+        assert!(Cli::try_parse_from(["haucet-tools", "cpio", "ramdisk.cpio", "ls"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "haucet-tools",
+                "cpio",
+                "ramdisk.cpio",
+                "mkdir",
+                "0750",
+                "tmp"
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn cpio_extract_requires_entry_and_output_together() {
+        let error =
+            Cli::try_parse_from(["haucet-tools", "cpio", "ramdisk.cpio", "extract", "init"])
+                .unwrap_err();
+
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
     }
 }

@@ -61,6 +61,15 @@ pub const S_IROTH: u32 = 0o004;
 pub const S_IWOTH: u32 = 0o002;
 pub const S_IXOTH: u32 = 0o001;
 
+pub fn parse_cpio_mode(mode: &str) -> std::io::Result<u32> {
+    u32::from_str_radix(mode, 8).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid cpio mode: {mode}"),
+        )
+    })
+}
+
 impl Cpio {
     pub fn new() -> Self {
         Self {
