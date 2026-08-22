@@ -1,8 +1,7 @@
 use anyhow::{Context, Result, ensure};
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
-use common::tools::ToolPaths;
 use common::{
     formats::{erofs, rvt},
     package, ramdisk, workspace,
@@ -53,7 +52,7 @@ enum Command {
     #[command(arg_required_else_help = true)]
     Ramdisk {
         #[command(subcommand)]
-        command: Option<RamdiskCommand>,
+        command: RamdiskCommand,
     },
 }
 
@@ -215,27 +214,10 @@ enum CpioCommands {
     Test,
 }
 
-pub fn run(cli: Cli) -> Result<()> {
-    match cli.command {
-        Command::Unpack(args) => run_unpack_command(args),
-        Command::UpdateBin { command } => run_update_bin_command(command),
-        Command::Erofs { command } => run_erofs_command(command),
-        Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
-        Command::Rvt { file } => {
-            let file = file
-                .to_str()
-                .with_context(|| format!("RVT path is not valid UTF-8: {}", file.display()))?;
-            Ok(rvt::parse_file(file)?)
-        }
-        Command::Ramdisk { command } => run_ramdisk_command(command),
-    }
-}
 fn run_unpack_command(args: FullUnpackArgs) -> Result<()> {
-    let tools = bundled_tools();
     package::unpack_full(
         &args.input,
         &args.out,
-        &tools,
         &args.partitions,
         args.all_erofs,
         args.layout,
@@ -243,6 +225,7 @@ fn run_unpack_command(args: FullUnpackArgs) -> Result<()> {
     )?;
     finish_unpack(&args.out, args.skip_chown)
 }
+
 fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
     match command {
         UpdateBinCommand::List { input, layout } => update_bin::list_file(&input, layout),
@@ -260,7 +243,6 @@ fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
 }
 
 fn run_erofs_command(command: ErofsCommand) -> Result<()> {
-    let tools = bundled_tools();
     match command {
         ErofsCommand::Unpack {
             image,
@@ -268,15 +250,22 @@ fn run_erofs_command(command: ErofsCommand) -> Result<()> {
             force,
             skip_chown,
         } => {
-            erofs::unpack(&image, &out, &tools, force)?;
+            erofs::unpack(&image, &out, force)?;
             finish_unpack(&out, skip_chown)
         }
         ErofsCommand::Repack {
             workspace,
             output,
             allow_grow,
-        } => erofs::repack(&workspace, &output, &tools, allow_grow),
+        } => erofs::repack(&workspace, &output, allow_grow),
     }
+}
+
+fn run_rvt_command(file: PathBuf) -> Result<()> {
+    let file = file
+        .to_str()
+        .with_context(|| format!("RVT path is not valid UTF-8: {}", file.display()))?;
+    Ok(rvt::parse_file(file)?)
 }
 
 fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
@@ -351,15 +340,9 @@ fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
     Ok(())
 }
 
-fn bundled_tools() -> ToolPaths {
-    ToolPaths::discover(None)
-        .unwrap_or_else(|error| panic!("required bundled tools are unavailable: {error:#}"))
-}
-
-fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {
+fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
     match command {
-        None => print_ramdisk_help(),
-        Some(RamdiskCommand::Unpack {
+        RamdiskCommand::Unpack {
             image,
             out,
             force,
@@ -370,7 +353,7 @@ fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {
             ramdisk::unpack(&image, &out)?;
             finish_unpack(&out, skip_chown)
         }
-        Some(RamdiskCommand::Repack {
+        RamdiskCommand::Repack {
             workspace,
             original_image,
             out,
@@ -380,10 +363,10 @@ fn run_ramdisk_command(command: Option<RamdiskCommand>) -> Result<()> {
             let out = absolute_path(&out)?;
             Ok(ramdisk::repack(&workspace, &original_image, &out)?)
         }
-        Some(RamdiskCommand::Patch { image, binary, out }) => {
+        RamdiskCommand::Patch { image, binary, out } => {
             Ok(ramdisk::patch(&image, &binary, &out)?)
         }
-        Some(RamdiskCommand::Info { image }) => Ok(ramdisk::info(&image)?),
+        RamdiskCommand::Info { image } => Ok(ramdisk::info(&image)?),
     }
 }
 
@@ -436,8 +419,17 @@ fn main() {
             "{ANSI_YELLOW}You are currently not in root mode, extract may cause permission problems.{ANSI_RESET}"
         );
     }
-    let main_cli = Cli::parse();
-    if let Err(error) = run(main_cli) {
+
+    let result = match Cli::parse().command {
+        Command::Unpack(args) => run_unpack_command(args),
+        Command::UpdateBin { command } => run_update_bin_command(command),
+        Command::Erofs { command } => run_erofs_command(command),
+        Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
+        Command::Rvt { file } => run_rvt_command(file),
+        Command::Ramdisk { command } => run_ramdisk_command(command),
+    };
+
+    if let Err(error) = result {
         eprintln!("error: {error:#}");
         std::process::exit(1);
     }

@@ -25,6 +25,18 @@ struct PackageManifest {
 pub fn unpack_full(
     input: &Path,
     out: &Path,
+    partitions: &[String],
+    all_erofs: bool,
+    layout: UpdateLayout,
+    force: bool,
+) -> Result<()> {
+    let tools = ToolPaths::discover(None)?;
+    unpack_full_with_tools(input, out, &tools, partitions, all_erofs, layout, force)
+}
+
+pub fn unpack_full_with_tools(
+    input: &Path,
+    out: &Path,
     tools: &ToolPaths,
     partitions: &[String],
     all_erofs: bool,
@@ -80,7 +92,7 @@ pub fn unpack_full(
         let image = images_dir.join(&component.output_name);
         if erofs::is_erofs(&image)? {
             let workspace = partitions_dir.join(&component.name);
-            erofs::unpack(&image, &workspace, tools, force)?;
+            erofs::unpack_with_tools(&image, &workspace, tools, force)?;
             unpacked_erofs.push(component.name.clone());
         } else if is_harmony_ramdisk(&image)? {
             let workspace = partitions_dir.join(&component.name);

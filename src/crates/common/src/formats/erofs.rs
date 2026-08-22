@@ -48,7 +48,12 @@ pub fn is_erofs(path: &Path) -> Result<bool> {
     Ok(magic == EROFS_MAGIC)
 }
 
-pub fn unpack(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Result<()> {
+pub fn unpack(image: &Path, out: &Path, force: bool) -> Result<()> {
+    let tools = ToolPaths::discover(None)?;
+    unpack_with_tools(image, out, &tools, force)
+}
+
+pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Result<()> {
     ensure!(
         is_erofs(image)?,
         "{} is not an EROFS image",
@@ -124,7 +129,17 @@ pub fn unpack(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Resul
     Ok(())
 }
 
-pub fn repack(workspace: &Path, output: &Path, tools: &ToolPaths, allow_grow: bool) -> Result<()> {
+pub fn repack(workspace: &Path, output: &Path, allow_grow: bool) -> Result<()> {
+    let tools = ToolPaths::discover(None)?;
+    repack_with_tools(workspace, output, &tools, allow_grow)
+}
+
+pub fn repack_with_tools(
+    workspace: &Path,
+    output: &Path,
+    tools: &ToolPaths,
+    allow_grow: bool,
+) -> Result<()> {
     ensure!(
         !output.exists(),
         "output already exists: {}",

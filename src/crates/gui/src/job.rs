@@ -32,7 +32,7 @@ pub(crate) fn run(job: Job) -> Result<String> {
     match job.operation {
         Operation::FullUnpack => {
             let output = required_output(&job)?;
-            package::unpack_full(
+            package::unpack_full_with_tools(
                 &input,
                 &output,
                 &discover_tools(&job)?,
@@ -57,13 +57,13 @@ pub(crate) fn run(job: Job) -> Result<String> {
         }
         Operation::ErofsUnpack => {
             let output = required_output(&job)?;
-            erofs::unpack(&input, &output, &discover_tools(&job)?, job.force)?;
+            erofs::unpack_with_tools(&input, &output, &discover_tools(&job)?, job.force)?;
             finish_unpack(&output, job.skip_chown)?;
             Ok(format!("Unpacked EROFS image into {}", output.display()))
         }
         Operation::ErofsRepack => {
             let output = required_output(&job)?;
-            erofs::repack(&input, &output, &discover_tools(&job)?, job.allow_grow)?;
+            erofs::repack_with_tools(&input, &output, &discover_tools(&job)?, job.allow_grow)?;
             Ok(format!("Repacked EROFS image to {}", output.display()))
         }
         Operation::RamdiskUnpack => {
