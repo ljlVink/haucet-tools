@@ -347,7 +347,7 @@ fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
             out,
             force,
             skip_chown,
-        }) => {
+        } => {
             let image = canonical_path(&image)?;
             prepare_output_dir(&out, force)?;
             ramdisk::unpack(&image, &out)?;
@@ -357,27 +357,15 @@ fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
             workspace,
             original_image,
             out,
-        }) => {
+        } => {
             let workspace = canonical_path(&workspace)?;
             let original_image = canonical_path(&original_image)?;
             let out = absolute_path(&out)?;
             Ok(ramdisk::repack(&workspace, &original_image, &out)?)
         }
-        RamdiskCommand::Patch { image, binary, out } => {
-            Ok(ramdisk::patch(&image, &binary, &out)?)
-        }
+        RamdiskCommand::Patch { image, binary, out } => Ok(ramdisk::patch(&image, &binary, &out)?),
         RamdiskCommand::Info { image } => Ok(ramdisk::info(&image)?),
     }
-}
-
-fn print_ramdisk_help() -> Result<()> {
-    let mut command = Cli::command();
-    let ramdisk = command
-        .find_subcommand_mut("ramdisk")
-        .context("ramdisk command is missing")?;
-    ramdisk.print_help()?;
-    println!();
-    Ok(())
 }
 
 fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
