@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use common::formats::update_bin::{self, UpdateLayout};
 use common::formats::{cpio, erofs, header::check_fmt};
 use common::tools::ToolPaths;
-use common::{package, partition, ramdisk};
+use common::{entropy, package, partition, ramdisk};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
@@ -69,6 +69,14 @@ pub enum JobOp {
     },
     PartitionInfo {
         image: String,
+    },
+    FileEntropy {
+        file: String,
+    },
+    FastbootStatus {},
+    FastbootFlash {
+        image: String,
+        target: String,
     },
 }
 
@@ -306,7 +314,148 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             };
             summary_payload(label, summary)
         }
+        JobOp::FileEntropy { file } => {
+            let summary = entropy::analyze_file(Path::new(file))?;
+            summary_payload(
+                format!(
+                    "信息熵 {:.6} bits/byte ({:.2}%)",
+                    summary.entropy_bits_per_byte,
+                    summary.normalized_percent()
+                ),
+                summary,
+            )
+        }
+        JobOp::FastbootStatus {} => fastboot_status(),
+        JobOp::FastbootFlash { image, target } => {
+            ensure!(!target.trim().is_empty(), "分区名不能为空");
+            fastboot_flash(Path::new(image), target.trim())
+        }
     }
+}
+
+fn fastboot_runtime() -> Result<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("创建 fastboot 异步运行时失败")
+}
+
+fn emit_log(text: &str) {
+    let line = serde_json::to_string(&serde_json::json!({ "t": "log", "s": text }))
+        .expect("serializing log line");
+    println!("{line}");
+}
+
+fn clean_device_string(s: &str) -> Option<String> {
+    hm_fastboot::nusb::clean_device_string(s)
+}
+
+fn fastboot_status() -> Result<WorkerResult> {
+    let runtime = fastboot_runtime()?;
+    runtime.block_on(async {
+        use hm_fastboot::nusb::{DeviceInfo, NusbFastBoot};
+        let devices = hm_fastboot::nusb::devices()
+            .await
+            .context("枚举 USB 设备失败")?;
+
+        let mut list = Vec::new();
+        let mut first: Option<DeviceInfo> = None;
+        for info in devices {
+            list.push(device_json(&info));
+            if first.is_none() {
+                first = Some(info);
+            }
+        }
+
+        let Some(info) = first else {
+            return Ok(WorkerResult {
+                ok: true,
+                summary: "未检测到 fastboot 设备".to_owned(),
+                payload: Some(serde_json::json!({
+                    "connected": false,
+                    "devices": list,
+                })),
+            });
+        };
+
+        let mut vars = serde_json::Map::new();
+        match NusbFastBoot::from_info(&info).await {
+            Ok(mut fb) => {
+                for var in ["product", "serialno", "version", "max-download-size"] {
+                    match fb.get_var(var).await {
+                        Ok(value) => {
+                            vars.insert(var.to_owned(), serde_json::Value::String(value));
+                        }
+                        Err(error) => emit_log(&format!("getvar:{var} 失败: {error}")),
+                    }
+                }
+            }
+            Err(error) => emit_log(&format!("打开设备失败: {error:#}")),
+        }
+
+        let product = vars
+            .get("product")
+            .and_then(|v| v.as_str())
+            .unwrap_or("未知设备")
+            .to_owned();
+        Ok(WorkerResult {
+            ok: true,
+            summary: format!("已连接 fastboot 设备: {product}"),
+            payload: Some(serde_json::json!({
+                "connected": true,
+                "devices": list,
+                "vars": vars,
+            })),
+        })
+    })
+}
+
+fn device_json(info: &hm_fastboot::nusb::DeviceInfo) -> serde_json::Value {
+    serde_json::json!({
+        "bus": info.bus_id(),
+        "addr": info.device_address(),
+        "vid": format!("{:04x}", info.vendor_id()),
+        "pid": format!("{:04x}", info.product_id()),
+        "product": info
+            .product_string()
+            .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
+            .unwrap_or_default(),
+        "serial": info
+            .serial_number()
+            .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
+            .unwrap_or_default(),
+    })
+}
+
+fn fastboot_flash(image: &Path, target: &str) -> Result<WorkerResult> {
+    let runtime = fastboot_runtime()?;
+    runtime.block_on(async {
+        use hm_fastboot::nusb::{FlashEvent, NusbFastBoot};
+        let mut devices = hm_fastboot::nusb::devices()
+            .await
+            .context("枚举 USB 设备失败")?;
+        let info = devices.next().ok_or_else(|| {
+            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
+        })?;
+        let mut fb = NusbFastBoot::from_info(&info)
+            .await
+            .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
+
+        let mut progress = |event: FlashEvent<'_>| match event {
+            FlashEvent::Message(msg) => emit_log(msg),
+            FlashEvent::Part { index, total } => {
+                emit_log(&format!("进度: {index}/{total} 部分完成"));
+            }
+        };
+        fb.flash_image(target, image, &mut progress)
+            .await
+            .with_context(|| format!("刷写 {} 到 {} 失败", image.display(), target))?;
+        Ok(WorkerResult {
+            ok: true,
+            summary: format!("已刷写 {} 到分区 {}", image.display(), target),
+            payload: None,
+        })
+    })
 }
 
 fn probe_ramdisk(image: &Path) -> Result<serde_json::Value> {

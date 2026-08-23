@@ -22,6 +22,10 @@ haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
 haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
 haucet-tools partition-info rvt.img # or any HARMONY!/HVB partition
 haucet-tools cpio ramdisk.cpio ls --recursive /
+haucet-tools fastboot devices
+haucet-tools fastboot flash updater updater_vendor.img
+haucet-tools fastboot getvar product
+haucet-tools fastboot reboot
 ```
 
 ## Build
@@ -38,6 +42,9 @@ cargo build --release
 Repacking changes filesystem or ramdisk bytes. `haucet-tools` preserves the original HVB certificate but cannot cryptographically re-sign it without the device/vendor signing key. A rebuilt image may be rejected by secure boot even when its filesystem and wrapper are structurally valid.
 
 The initial release rebuilds partition images. It does not create a newly signed `update.bin` or `update_full_base.zip`.
+## References
+
+[fastboot rust implemention](https://github.com/boardswarm/fastboot-rs)
 
 ## License
 

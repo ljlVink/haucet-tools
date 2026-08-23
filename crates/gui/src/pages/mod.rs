@@ -1,5 +1,7 @@
 pub mod cpio;
+pub mod entropy;
 pub mod erofs;
+pub mod fastboot;
 pub mod home;
 pub mod package;
 pub mod partition;
@@ -16,17 +18,21 @@ pub enum Page {
     Erofs,
     Ramdisk,
     Partition,
+    Fastboot,
+    Entropy,
     Cpio,
 }
 
 impl Page {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Home,
         Self::Package,
         Self::UpdateBin,
         Self::Erofs,
         Self::Ramdisk,
         Self::Partition,
+        Self::Fastboot,
+        Self::Entropy,
         Self::Cpio,
     ];
 
@@ -38,6 +44,8 @@ impl Page {
             Self::Erofs => "EROFS 镜像",
             Self::Ramdisk => "Ramdisk",
             Self::Partition => "分区信息",
+            Self::Fastboot => "Fastboot 刷机",
+            Self::Entropy => "文件分析",
             Self::Cpio => "Cpio 浏览器",
         }
     }

@@ -1,0 +1,26 @@
+[package]
+name = "hm-fastboot"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Fastboot protocol implementation for Huawei/HarmonyOS devices (fork of fastboot-rs)"
+readme = "README.md"
+repository = "https://github.com/boardswarm/fastboot-rs"
+
+[dependencies]
+bytes = "1"
+log = "0.4"
+nusb = { version = "0.2.3" }
+strum = { version = "0.28", features = ["derive"] }
+thiserror = "2"
+tracing = "0.1"
+
+[features]
+default = ["nusb/tokio"]
+
+[dev-dependencies]
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing-subscriber = "0.3"

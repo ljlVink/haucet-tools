@@ -13,6 +13,8 @@ pub(crate) struct HaucetApp {
     pub erofs: pages::erofs::ErofsPage,
     pub ramdisk: pages::ramdisk::RamdiskPage,
     pub partition: pages::partition::PartitionPage,
+    pub fastboot: pages::fastboot::FastbootPage,
+    pub entropy: pages::entropy::EntropyPage,
     pub cpio: pages::cpio::CpioPage,
 
     pub job: Option<RunningJob>,
@@ -48,6 +50,8 @@ impl HaucetApp {
             erofs: pages::erofs::ErofsPage::default(),
             ramdisk: pages::ramdisk::RamdiskPage::default(),
             partition: pages::partition::PartitionPage::default(),
+            fastboot: pages::fastboot::FastbootPage::default(),
+            entropy: pages::entropy::EntropyPage::default(),
             cpio: pages::cpio::CpioPage::default(),
             job: None,
             job_owner: Page::Home,
@@ -409,6 +413,16 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.partition = page;
                 }
+                Page::Fastboot => {
+                    let mut page = std::mem::take(&mut self.fastboot);
+                    page.ui(ui, self);
+                    self.fastboot = page;
+                }
+                Page::Entropy => {
+                    let mut page = std::mem::take(&mut self.entropy);
+                    page.ui(ui, self);
+                    self.entropy = page;
+                }
                 Page::Cpio => {
                     let mut page = std::mem::take(&mut self.cpio);
                     page.ui(ui, self);
@@ -521,5 +535,8 @@ fn job_label(op: &JobOp) -> &'static str {
         RamdiskPatch { .. } => "给 ramdisk 打补丁",
         RamdiskProbe { .. } => "检查 ramdisk 镜像",
         PartitionInfo { .. } => "读取分区信息",
+        FileEntropy { .. } => "计算文件信息熵",
+        FastbootStatus { .. } => "检测 fastboot 设备",
+        FastbootFlash { .. } => "刷写 fastboot 镜像",
     }
 }

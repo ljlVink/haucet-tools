@@ -2,9 +2,11 @@ use anyhow::{Context, Result, ensure};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::formats::update_bin::{self, UpdateLayout};
-use common::{formats::erofs, package, ramdisk};
+use common::{entropy, formats::erofs, package, ramdisk};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+mod fastboot;
 
 #[derive(Debug, Parser)]
 #[command(version, about, arg_required_else_help = true)]
@@ -41,12 +43,41 @@ enum Command {
     /// Inspect a partition image: HARMONY!/HVB wrapper or RVT (rot\0) contents
     #[command(arg_required_else_help = true)]
     PartitionInfo { image: PathBuf },
+    /// Calculate Shannon entropy for a file
+    #[command(arg_required_else_help = true)]
+    Entropy { file: PathBuf },
+    /// Operate on a device connected in fastboot mode
+    #[command(arg_required_else_help = true)]
+    Fastboot {
+        #[command(subcommand)]
+        command: FastbootCommand,
+    },
     /// Unpack, repack, patch, or inspect a ramdisk image
     #[command(arg_required_else_help = true)]
     Ramdisk {
         #[command(subcommand)]
         command: RamdiskCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum FastbootCommand {
+    /// List connected fastboot devices
+    Devices,
+    /// Query a fastboot variable (getvar), such as `product`
+    GetVar {
+        /// Variable name, e.g. `product` or `max-download-size`
+        var: String,
+    },
+    /// Flash a raw or sparse image to a partition
+    Flash {
+        /// Target partition name, e.g. `updater`, `ramdisk`, or `vendor`
+        partition: String,
+        /// Image file to flash
+        image: PathBuf,
+    },
+    /// Reboot the device out of fastboot mode
+    Reboot,
 }
 
 #[derive(Debug, Args)]
@@ -242,6 +273,27 @@ fn run_partition_info_command(image: PathBuf) -> Result<()> {
     Ok(common::partition::info(&image)?)
 }
 
+fn run_entropy_command(file: PathBuf) -> Result<()> {
+    let summary = entropy::analyze_file(&file)?;
+    println!("file: {}", file.display());
+    println!("size: {} bytes", summary.size);
+    println!(
+        "entropy: {:.6} bits/byte ({:.2}%)",
+        summary.entropy_bits_per_byte,
+        summary.normalized_percent()
+    );
+    println!("unique byte values: {}", summary.unique_bytes);
+    if let Some(most_common) = summary.most_common {
+        println!(
+            "most common byte: 0x{:02X} ({} bytes, {:.2}%)",
+            most_common.byte,
+            most_common.count,
+            most_common.ratio * 100.0
+        );
+    }
+    Ok(())
+}
+
 fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
     let file_str = file
         .to_str()
@@ -314,6 +366,23 @@ fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
     Ok(())
 }
 
+fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("create tokio runtime fail")?;
+    runtime.block_on(async move {
+        match command {
+            FastbootCommand::Devices => fastboot::devices().await,
+            FastbootCommand::GetVar { var } => fastboot::get_var(&var).await,
+            FastbootCommand::Flash { partition, image } => {
+                fastboot::flash(&partition, &image).await
+            }
+            FastbootCommand::Reboot => fastboot::reboot().await,
+        }
+    })
+}
+
 fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
     match command {
         RamdiskCommand::Unpack { image, out, force } => {
@@ -369,6 +438,8 @@ fn main() {
         Command::Erofs { command } => run_erofs_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::PartitionInfo { image } => run_partition_info_command(image),
+        Command::Entropy { file } => run_entropy_command(file),
+        Command::Fastboot { command } => run_fastboot_command(command),
         Command::Ramdisk { command } => run_ramdisk_command(command),
     };
 
