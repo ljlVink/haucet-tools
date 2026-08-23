@@ -41,18 +41,6 @@ impl Page {
             Self::Cpio => "Cpio 浏览器",
         }
     }
-
-    pub fn subtitle(self) -> &'static str {
-        match self {
-            Self::Home => "拖入文件自动识别，或从下方选择任务",
-            Self::Package => "解开 update_full_base.zip，提取分区镜像并解包",
-            Self::UpdateBin => "查看 update.bin 组件表，解包全部或选中分区",
-            Self::Erofs => "解包 / 重新打包 EROFS 分区镜像",
-            Self::Ramdisk => "解包、重新打包 ramdisk，或一键替换 init_early 打补丁",
-            Self::Partition => "识别 HARMONY! / HVB / RVT 镜像并展示详细信息",
-            Self::Cpio => "浏览和编辑 ramdisk.cpio 归档内容",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

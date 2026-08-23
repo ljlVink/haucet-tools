@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 const MIN_FONT_BYTES: u64 = 100 * 1024;
 const MAX_FONT_BYTES: u64 = 64 * 1024 * 1024;
+const BUNDLED_FONT_BYTES: &[u8] = include_bytes!("../../../assets/HarmonyOS_Sans_SC_Regular.ttf");
 
+#[cfg(all(unix, not(target_os = "macos")))]
 const CJK_KEYWORDS: &[&str] = &[
     "cjk",
     "wqy",
@@ -25,35 +27,50 @@ const CJK_KEYWORDS: &[&str] = &[
 ];
 
 pub fn install_cjk_font(ctx: &egui::Context) -> bool {
+    if valid_font_size(BUNDLED_FONT_BYTES.len() as u64) {
+        install_font(ctx, egui::FontData::from_static(BUNDLED_FONT_BYTES));
+        return true;
+    }
+
     for candidate in candidate_paths() {
         let Some(bytes) = load_candidate(&candidate) else {
             continue;
         };
-        let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert(
-            "cjk".to_owned(),
-            Arc::new(egui::FontData::from_owned(bytes)),
-        );
-        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-            fonts
-                .families
-                .entry(family)
-                .or_default()
-                .push("cjk".to_owned());
-        }
-        ctx.set_fonts(fonts);
+        install_font(ctx, egui::FontData::from_owned(bytes));
         return true;
     }
     false
 }
 
+fn install_font(ctx: &egui::Context, font_data: egui::FontData) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .font_data
+        .insert("harmonyos-sans-sc".to_owned(), Arc::new(font_data));
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "harmonyos-sans-sc".to_owned());
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("harmonyos-sans-sc".to_owned());
+    ctx.set_fonts(fonts);
+}
+
 fn load_candidate(path: &Path) -> Option<Vec<u8>> {
     let metadata = std::fs::metadata(path).ok()?;
     let length = metadata.len();
-    if !(MIN_FONT_BYTES..=MAX_FONT_BYTES).contains(&length) {
+    if !valid_font_size(length) {
         return None;
     }
     std::fs::read(path).ok()
+}
+
+fn valid_font_size(length: u64) -> bool {
+    (MIN_FONT_BYTES..=MAX_FONT_BYTES).contains(&length)
 }
 
 fn candidate_paths() -> Vec<PathBuf> {
@@ -111,24 +128,26 @@ fn named_candidates(candidates: &mut Vec<PathBuf>) {
     }
 }
 
+#[cfg(all(unix, not(target_os = "macos")))]
 fn scanned_candidates(candidates: &mut Vec<PathBuf>) {
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let mut roots = vec![
-            PathBuf::from("/usr/share/fonts"),
-            PathBuf::from("/usr/local/share/fonts"),
-        ];
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
-            roots.push(home.join(".fonts"));
-            roots.push(home.join(".local/share/fonts"));
-        }
-        for root in roots {
-            scan_font_dir(&root, candidates, 0);
-        }
+    let mut roots = vec![
+        PathBuf::from("/usr/share/fonts"),
+        PathBuf::from("/usr/local/share/fonts"),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        roots.push(home.join(".fonts"));
+        roots.push(home.join(".local/share/fonts"));
+    }
+    for root in roots {
+        scan_font_dir(&root, candidates, 0);
     }
 }
 
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn scanned_candidates(_candidates: &mut Vec<PathBuf>) {}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn scan_font_dir(dir: &Path, candidates: &mut Vec<PathBuf>, depth: usize) {
     if depth > 3 || !dir.is_dir() {
         return;

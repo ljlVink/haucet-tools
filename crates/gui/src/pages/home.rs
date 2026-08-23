@@ -45,12 +45,6 @@ impl HomePage {
                         .strong()
                         .size(22.0),
                 );
-                ui.label(
-                    egui::RichText::new(
-                        "Huawei / HarmonyOS 镜像工具箱：解包更新包、EROFS / ramdisk 镜像处理、RVT 与 HVB 信息查看。",
-                    )
-                    .weak(),
-                );
             });
         });
     }
@@ -155,38 +149,59 @@ impl HomePage {
     fn quick_actions(&self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(egui::RichText::new("常用任务").strong().size(15.0));
         ui.add_space(4.0);
+        let spacing = 12.0;
+        let available_width = ui.available_width();
+        let columns = if available_width >= 624.0 { 2 } else { 1 };
+        let card_width = if columns == 2 {
+            (available_width - spacing) / 2.0
+        } else {
+            available_width
+        };
+
         egui::Grid::new("quick-actions")
-            .num_columns(2)
-            .spacing([12.0, 12.0])
+            .num_columns(columns)
+            .spacing([spacing, spacing])
             .show(ui, |ui| {
                 quick_card(
                     ui,
                     "解开更新包",
                     "把 update_full_base.zip 解成工作区，可挑选分区",
                     Page::Package,
+                    card_width,
                     app,
                 );
+                if columns == 1 {
+                    ui.end_row();
+                }
                 quick_card(
                     ui,
                     "给 ramdisk 打补丁",
                     "替换 init_early，自动检查大小限制",
                     Page::Ramdisk,
+                    card_width,
                     app,
                 );
+                ui.end_row();
                 quick_card(
                     ui,
                     "解包/打包 EROFS",
                     "system / vendor 等分区镜像的展开与重建",
                     Page::Erofs,
+                    card_width,
                     app,
                 );
+                if columns == 1 {
+                    ui.end_row();
+                }
                 quick_card(
                     ui,
                     "查看分区信息",
                     "识别 HARMONY! / HVB / RVT 并展示细节",
                     Page::Partition,
+                    card_width,
                     app,
                 );
+                ui.end_row();
             });
     }
 
@@ -309,13 +324,20 @@ fn default_output_for(input: &str, suffix: &str) -> String {
     }
 }
 
-fn quick_card(ui: &mut egui::Ui, title: &str, description: &str, page: Page, app: &mut HaucetApp) {
+fn quick_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    description: &str,
+    page: Page,
+    outer_width: f32,
+    app: &mut HaucetApp,
+) {
     let response = egui::Frame::group(ui.style())
         .fill(ui.visuals().extreme_bg_color)
         .corner_radius(egui::CornerRadius::same(8))
         .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
-            ui.set_min_width(300.0);
+            ui.set_width((outer_width - 24.0).max(0.0));
             ui.label(egui::RichText::new(title).strong().size(15.0));
             ui.label(egui::RichText::new(description).weak().size(12.5));
         })

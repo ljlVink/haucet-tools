@@ -107,7 +107,13 @@ pub fn run_worker() -> i32 {
     };
     println!(
         "{}",
-        serde_json::to_string(&result).expect("serializing worker result")
+        serde_json::to_string(&serde_json::json!({
+            "t": "result",
+            "ok": result.ok,
+            "summary": result.summary,
+            "payload": result.payload,
+        }))
+        .expect("serializing worker result")
     );
     0
 }

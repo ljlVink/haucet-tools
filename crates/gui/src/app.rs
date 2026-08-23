@@ -252,8 +252,6 @@ impl HaucetApp {
             ui.label(egui::RichText::new("Haucet Tools").strong().size(18.0));
             ui.label(egui::RichText::new("·").weak());
             ui.label(egui::RichText::new(self.current.title()).size(15.0));
-            ui.separator();
-            ui.label(egui::RichText::new(self.current.subtitle()).weak());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(job) = &mut self.job {
                     ui.add(egui::Spinner::new().size(16.0));
@@ -304,7 +302,7 @@ impl HaucetApp {
         ui.add_space(4.0);
         ui.label(egui::RichText::new("关于").weak());
         ui.label(
-            egui::RichText::new("Huawei/HarmonyOS 镜像工具\nGPL-3.0 · 基于 haucet-tools CLI")
+            egui::RichText::new("Huawei/HarmonyOS 镜像工具")
                 .weak()
                 .size(11.0),
         );

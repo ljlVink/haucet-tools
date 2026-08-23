@@ -24,7 +24,8 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1180.0, 800.0])
         .with_min_inner_size([980.0, 640.0])
-        .with_title("Haucet Tools — 华为/HarmonyOS 镜像工具箱");
+        .with_title("Haucet Tools")
+        .with_decorations(false);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(Arc::new(icon));
     }
@@ -47,7 +48,7 @@ type LogoData = (Vec<u8>, [usize; 2]);
 
 fn load_logo() -> (Option<egui::IconData>, Option<LogoData>) {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let logo_path = manifest_dir.join("../../assets/logo.png");
+    let logo_path = manifest_dir.join("../../assets/logo-icon.png");
     let bytes = match std::fs::read(&logo_path) {
         Ok(bytes) => bytes,
         Err(_) => return (None, None),

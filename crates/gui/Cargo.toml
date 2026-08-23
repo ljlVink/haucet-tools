@@ -20,6 +20,9 @@ rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "a
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 
+[build-dependencies]
+winresource = { version = "0.1", default-features = false }
+
 # The X11 backend only exists on Unix; on Windows eframe uses its native
 # (WGL/OpenGL via glow) backend.
 [target.'cfg(unix)'.dependencies]
