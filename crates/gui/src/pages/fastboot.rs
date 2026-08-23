@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct FastbootDeviceInfo {
-    pub bus: u8,
+    pub bus: String,
     pub addr: u8,
     pub vid: String,
     pub pid: String,
@@ -185,9 +185,8 @@ impl FastbootPage {
                 .color(egui::Color32::from_rgb(230, 170, 40)),
         );
         ui.add_space(6.0);
-        let ready = !app.job_running()
-            && !self.image.trim().is_empty()
-            && !self.target.trim().is_empty();
+        let ready =
+            !app.job_running() && !self.image.trim().is_empty() && !self.target.trim().is_empty();
         if run_button(
             ui,
             "刷写镜像",

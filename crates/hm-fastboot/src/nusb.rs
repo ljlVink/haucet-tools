@@ -1,9 +1,9 @@
+use nusb::Endpoint;
 use nusb::descriptors::TransferType;
 use nusb::transfer::Bulk;
 use nusb::transfer::Direction;
 use nusb::transfer::{Buffer, In, Out};
-use nusb::Endpoint;
-pub use nusb::{transfer::TransferError, Device, DeviceInfo, Interface};
+pub use nusb::{Device, DeviceInfo, Interface, transfer::TransferError};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -12,11 +12,11 @@ use thiserror::Error;
 use tracing::{info, warn};
 use tracing::{instrument, trace};
 
-use crate::protocol::{parse_u32, FastBootResponse};
 use crate::protocol::{FastBootCommand, FastBootResponseParseError};
+use crate::protocol::{FastBootResponse, parse_u32};
 use crate::sparse::{
-    split_image, split_raw, ChunkHeader, FileHeader, FileHeaderBytes, ParseError, SplitError,
-    CHUNK_HEADER_BYTES_LEN,
+    CHUNK_HEADER_BYTES_LEN, ChunkHeader, FileHeader, FileHeaderBytes, ParseError, SplitError,
+    split_image, split_raw,
 };
 
 pub async fn devices() -> Result<impl Iterator<Item = DeviceInfo>, nusb::Error> {
@@ -128,10 +128,7 @@ impl NusbFastBoot {
             .ok_or(NusbFastBootOpenError::MissingEndpoints)?;
         trace!(
             "Fastboot endpoints: OUT: {} (max: {}), IN: {} (max: {})",
-            ep_out,
-            max_out,
-            ep_in,
-            max_in
+            ep_out, max_out, ep_in, max_in
         );
         let ep_out = interface
             .endpoint::<Bulk, Out>(ep_out)
@@ -205,11 +202,11 @@ impl NusbFastBoot {
                 FastBootResponse::Info(_) => (),
                 FastBootResponse::Text(_) => (),
                 FastBootResponse::Data(_) => {
-                    return Err(NusbFastBootError::FastbootUnexpectedReply)
+                    return Err(NusbFastBootError::FastbootUnexpectedReply);
                 }
                 FastBootResponse::Okay(value) => return Ok(value),
                 FastBootResponse::Fail(fail) => {
-                    return Err(NusbFastBootError::FastbootFailed(fail))
+                    return Err(NusbFastBootError::FastbootFailed(fail));
                 }
             }
         }
@@ -246,10 +243,10 @@ impl NusbFastBoot {
                     return Ok(DataDownload::new(self, size));
                 }
                 FastBootResponse::Okay(_) => {
-                    return Err(NusbFastBootError::FastbootUnexpectedReply)
+                    return Err(NusbFastBootError::FastbootUnexpectedReply);
                 }
                 FastBootResponse::Fail(fail) => {
-                    return Err(NusbFastBootError::FastbootFailed(fail))
+                    return Err(NusbFastBootError::FastbootFailed(fail));
                 }
             }
         }
@@ -307,13 +304,13 @@ impl NusbFastBoot {
                 }
                 FastBootResponse::Text(t) => info!("Text: {}", t),
                 FastBootResponse::Data(_) => {
-                    return Err(NusbFastBootError::FastbootUnexpectedReply)
+                    return Err(NusbFastBootError::FastbootUnexpectedReply);
                 }
                 FastBootResponse::Okay(_) => {
                     return Ok(vars);
                 }
                 FastBootResponse::Fail(fail) => {
-                    return Err(NusbFastBootError::FastbootFailed(fail))
+                    return Err(NusbFastBootError::FastbootFailed(fail));
                 }
             }
         }
@@ -330,11 +327,11 @@ impl NusbFastBoot {
                 FastBootResponse::Info(i) => lines.push(i),
                 FastBootResponse::Text(t) => lines.push(t),
                 FastBootResponse::Data(_) => {
-                    return Err(NusbFastBootError::FastbootUnexpectedReply)
+                    return Err(NusbFastBootError::FastbootUnexpectedReply);
                 }
                 FastBootResponse::Okay(_) => return Ok(lines),
                 FastBootResponse::Fail(fail) => {
-                    return Err(NusbFastBootError::FastbootFailed(fail))
+                    return Err(NusbFastBootError::FastbootFailed(fail));
                 }
             }
         }
@@ -401,9 +398,7 @@ impl NusbFastBoot {
 
             sender.extend_from_slice(&split.header.to_bytes()).await?;
             for chunk in &split.chunks {
-                sender
-                    .extend_from_slice(&chunk.header.to_bytes())
-                    .await?;
+                sender.extend_from_slice(&chunk.header.to_bytes()).await?;
                 file.seek(SeekFrom::Start(chunk.offset as u64))?;
                 let mut left = chunk.size;
                 while left > 0 {

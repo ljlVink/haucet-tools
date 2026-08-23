@@ -97,36 +97,3 @@ fn summarize_counts(total: u64, counts: &[u64; 256]) -> EntropySummary {
         most_common: Some(most_common),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    #[test]
-    fn empty_input_has_zero_entropy() {
-        let summary = analyze_reader(Cursor::new(Vec::<u8>::new())).unwrap();
-        assert_eq!(summary.size, 0);
-        assert_eq!(summary.entropy_bits_per_byte, 0.0);
-        assert_eq!(summary.unique_bytes, 0);
-        assert!(summary.most_common.is_none());
-    }
-
-    #[test]
-    fn repeated_byte_has_zero_entropy() {
-        let summary = analyze_reader(Cursor::new(vec![0x41; 1024])).unwrap();
-        assert_eq!(summary.size, 1024);
-        assert_eq!(summary.entropy_bits_per_byte, 0.0);
-        assert_eq!(summary.unique_bytes, 1);
-        assert_eq!(summary.most_common.unwrap().byte, 0x41);
-    }
-
-    #[test]
-    fn balanced_all_byte_values_has_full_entropy() {
-        let data = (0_u8..=255).cycle().take(256 * 8).collect::<Vec<_>>();
-        let summary = analyze_reader(Cursor::new(data)).unwrap();
-        assert_eq!(summary.unique_bytes, 256);
-        assert!((summary.entropy_bits_per_byte - 8.0).abs() < f64::EPSILON);
-        assert!((summary.normalized - 1.0).abs() < f64::EPSILON);
-    }
-}

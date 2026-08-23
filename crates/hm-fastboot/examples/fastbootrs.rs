@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Parser;
-use hm_fastboot::nusb::{clean_device_string, FlashEvent, NusbFastBoot};
+use hm_fastboot::nusb::{FlashEvent, NusbFastBoot, clean_device_string};
 
 #[derive(Parser)]
 enum Opts {
