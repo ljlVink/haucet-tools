@@ -14,7 +14,6 @@ pub(crate) struct HaucetApp {
     pub ramdisk: pages::ramdisk::RamdiskPage,
     pub partition: pages::partition::PartitionPage,
     pub fastboot: pages::fastboot::FastbootPage,
-    pub entropy: pages::entropy::EntropyPage,
     pub cpio: pages::cpio::CpioPage,
 
     pub job: Option<RunningJob>,
@@ -51,7 +50,6 @@ impl HaucetApp {
             ramdisk: pages::ramdisk::RamdiskPage::default(),
             partition: pages::partition::PartitionPage::default(),
             fastboot: pages::fastboot::FastbootPage::default(),
-            entropy: pages::entropy::EntropyPage::default(),
             cpio: pages::cpio::CpioPage::default(),
             job: None,
             job_owner: Page::Home,
@@ -417,11 +415,6 @@ impl HaucetApp {
                     let mut page = std::mem::take(&mut self.fastboot);
                     page.ui(ui, self);
                     self.fastboot = page;
-                }
-                Page::Entropy => {
-                    let mut page = std::mem::take(&mut self.entropy);
-                    page.ui(ui, self);
-                    self.entropy = page;
                 }
                 Page::Cpio => {
                     let mut page = std::mem::take(&mut self.cpio);

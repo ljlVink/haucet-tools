@@ -19,12 +19,11 @@ pub enum Page {
     Ramdisk,
     Partition,
     Fastboot,
-    Entropy,
     Cpio,
 }
 
 impl Page {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Home,
         Self::Package,
         Self::UpdateBin,
@@ -32,7 +31,6 @@ impl Page {
         Self::Ramdisk,
         Self::Partition,
         Self::Fastboot,
-        Self::Entropy,
         Self::Cpio,
     ];
 
@@ -45,7 +43,6 @@ impl Page {
             Self::Ramdisk => "Ramdisk",
             Self::Partition => "分区信息",
             Self::Fastboot => "Fastboot 刷机",
-            Self::Entropy => "文件分析",
             Self::Cpio => "Cpio 浏览器",
         }
     }

@@ -1,6 +1,7 @@
 use crate::app::HaucetApp;
-use crate::pages::{Page, ResultView, run_button};
+use crate::pages::{Page, run_button};
 use crate::util::{human_size, kv, message_box, section};
+use common::entropy::EntropySummary;
 use common::partition::{CertSummary, HarmonySummary, PartitionSummary};
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
@@ -9,8 +10,16 @@ use egui_extras::{Column, TableBuilder};
 pub struct PartitionPage {
     pub input: String,
     pub summary: Option<PartitionSummary>,
-    pub error: Option<String>,
-    pub result: Option<ResultView>,
+    pub entropy_summary: Option<EntropySummary>,
+    pub partition_error: Option<String>,
+    pub entropy_error: Option<String>,
+    pending_job: Option<PartitionJob>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PartitionJob {
+    Info,
+    Entropy,
 }
 
 impl PartitionPage {
@@ -25,7 +34,7 @@ impl PartitionPage {
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new(
-                        "选择任意分区镜像（HARMONY! ramdisk、EROFS 分区、RVT 密钥镜像、HVB 包装镜像）, 自动识别并展示详细信息。",
+                        "选择分区镜像以查看详细信息，也可以计算文件字节分布的 Shannon 信息熵。",
                     )
                     .weak(),
                 );
@@ -35,12 +44,13 @@ impl PartitionPage {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.input)
                             .hint_text("镜像路径或拖放文件到这里")
-                            .desired_width(ui.available_width() - 260.0),
+                            .desired_width(ui.available_width() - 160.0),
                     );
                     if ui.button("选择文件…").clicked()
-                        && let Some(path) = app.pick_file("选择分区镜像", &[("镜像", &["img"])]) {
-                            self.input = path.display().to_string();
-                        }
+                        && let Some(path) = app.pick_file("选择镜像或文件", &[])
+                    {
+                        self.input = path.display().to_string();
+                    }
                 });
                 let drops = app.take_drops(ui.ctx());
                 if let Some(path) = drops.first() {
@@ -48,31 +58,40 @@ impl PartitionPage {
                 }
 
                 ui.add_space(6.0);
-                if run_button(
-                    ui,
-                    "查看信息",
-                    !app.job_running() && !self.input.trim().is_empty(),
-                    None,
-                )
-                .clicked()
-                {
-                    app.start_job(crate::worker::JobOp::PartitionInfo {
-                        image: self.input.trim().to_owned(),
-                    });
-                }
+                let can_run = !app.job_running() && !self.input.trim().is_empty();
+                ui.horizontal(|ui| {
+                    if run_button(ui, "查看信息", can_run, None).clicked() {
+                        self.summary = None;
+                        self.partition_error = None;
+                        self.pending_job = Some(PartitionJob::Info);
+                        app.start_job(crate::worker::JobOp::PartitionInfo {
+                            image: self.input.trim().to_owned(),
+                        });
+                    }
+                    if run_button(ui, "计算信息熵", can_run, None).clicked() {
+                        self.entropy_summary = None;
+                        self.entropy_error = None;
+                        self.pending_job = Some(PartitionJob::Entropy);
+                        app.start_job(crate::worker::JobOp::FileEntropy {
+                            file: self.input.trim().to_owned(),
+                        });
+                    }
+                });
                 ui.add_space(8.0);
 
-                if let Some(error) = &self.error {
+                if let Some(error) = &self.partition_error {
                     message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
                 }
                 if let Some(summary) = &self.summary {
                     self.render(ui, summary);
                 }
                 ui.add_space(10.0);
-                if let Some(result) = &self.result
-                    && !result.ok {
-                        message_box(ui, egui::Color32::from_rgb(230, 90, 90), &result.summary);
-                    }
+                if let Some(error) = &self.entropy_error {
+                    message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
+                }
+                if let Some(summary) = &self.entropy_summary {
+                    crate::pages::entropy::render_summary(ui, summary);
+                }
             });
     }
 
@@ -80,19 +99,45 @@ impl PartitionPage {
         let Some(result) = app.take_result(Page::Partition) else {
             return;
         };
+        match self.pending_job.take().unwrap_or(PartitionJob::Info) {
+            PartitionJob::Info => self.apply_partition_result(result),
+            PartitionJob::Entropy => self.apply_entropy_result(result),
+        }
+    }
+
+    fn apply_partition_result(&mut self, result: crate::job::JobResult) {
         if !result.ok {
             self.summary = None;
-            self.error = Some(result.summary.clone());
+            self.partition_error = Some(result.summary);
             return;
         }
         if let Some(payload) = result.payload {
             match serde_json::from_value::<PartitionSummary>(payload) {
                 Ok(summary) => {
                     self.summary = Some(summary);
-                    self.error = None;
+                    self.partition_error = None;
                 }
                 Err(error) => {
-                    self.error = Some(format!("解析结果失败：{error}"));
+                    self.partition_error = Some(format!("解析结果失败：{error}"));
+                }
+            }
+        }
+    }
+
+    fn apply_entropy_result(&mut self, result: crate::job::JobResult) {
+        if !result.ok {
+            self.entropy_summary = None;
+            self.entropy_error = Some(result.summary);
+            return;
+        }
+        if let Some(payload) = result.payload {
+            match serde_json::from_value::<EntropySummary>(payload) {
+                Ok(summary) => {
+                    self.entropy_summary = Some(summary);
+                    self.entropy_error = None;
+                }
+                Err(error) => {
+                    self.entropy_error = Some(format!("解析结果失败：{error}"));
                 }
             }
         }
