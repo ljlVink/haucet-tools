@@ -25,7 +25,7 @@ impl PartitionPage {
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new(
-                        "选择任意分区镜像（HARMONY! ramdisk、EROFS 分区、RVT 密钥镜像、HVB 包装镜像），自动识别并展示详细信息。",
+                        "选择任意分区镜像（HARMONY! ramdisk、EROFS 分区、RVT 密钥镜像、HVB 包装镜像）, 自动识别并展示详细信息。",
                     )
                     .weak(),
                 );
@@ -204,7 +204,7 @@ impl PartitionPage {
                     ui,
                     "每分区密钥数",
                     if rvt.raw_key_count == 0 {
-                        "0（旧版，按 1 处理）".to_owned()
+                        "0（旧版, 按 1 处理）".to_owned()
                     } else {
                         rvt.raw_key_count.to_string()
                     },
@@ -241,7 +241,7 @@ impl PartitionPage {
             .column(Column::auto().at_least(80.0))
             .column(Column::auto().at_least(140.0))
             .column(Column::remainder().at_least(140.0))
-            .header(22.0, |mut header| {
+            .header(24.0, |mut header| {
                 header.col(|ui| {
                     ui.strong("分区");
                 });

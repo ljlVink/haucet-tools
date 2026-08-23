@@ -91,12 +91,12 @@ fn detect_dir(path: &Path) -> (FileKind, String) {
     if is_erofs_workspace {
         (
             FileKind::ErofsWorkspace,
-            "这是 EROFS 解包工作区，可以直接重新打包".to_owned(),
+            "这是 EROFS 解包工作区, 可以直接重新打包".to_owned(),
         )
     } else if has_cpio {
         (
             FileKind::RamdiskWorkspace,
-            "这是 ramdisk 解包工作区，可以直接重新打包镜像".to_owned(),
+            "这是 ramdisk 解包工作区, 可以直接重新打包镜像".to_owned(),
         )
     } else {
         (
@@ -115,7 +115,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     };
     let length = metadata.len();
     if length < 8 {
-        return (FileKind::Unknown, "文件太小，无法识别".to_owned());
+        return (FileKind::Unknown, "文件太小, 无法识别".to_owned());
     }
 
     let mut head = [0_u8; 180];
@@ -123,10 +123,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
 
     // ZIP package
     if head_len >= 4 && &head[0..4] == b"PK\x03\x04" {
-        return (
-            FileKind::ZipPackage,
-            "这是 ZIP 压缩包（华为 update_full_base.zip 更新包候选），可以解包分区镜像".to_owned(),
-        );
+        return (FileKind::ZipPackage, "ZIP 压缩包".to_owned());
     }
 
     // update.bin: TLV type 0x01 (L2) or 0x11 (L1) + sane component table size
@@ -141,7 +138,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
             return (
                 FileKind::UpdateBin,
                 format!(
-                    "这是 update.bin 组件包（{} 个分区），可以查看和解包分区",
+                    "update.bin 组件包（{} 个分区）, 可以查看和解包分区",
                     compinfo_len / 71
                 ),
             );
@@ -150,27 +147,20 @@ fn detect_file(path: &Path) -> (FileKind, String) {
 
     // cpio archive
     if head_len >= 6 && (&head[0..6] == b"070701" || &head[0..6] == b"070702") {
-        return (
-            FileKind::Cpio,
-            "这是 cpio 归档（ramdisk.cpio），可以浏览和编辑内容".to_owned(),
-        );
+        return (FileKind::Cpio, "cpio 归档, 可浏览和编辑内容".to_owned());
     }
 
     // HARMONY! frame
     if head_len >= 8 && &head[0..8] == HARMONY_MAGIC {
         return (
             FileKind::HarmonyFrame,
-            "这是 HARMONY! 包装的镜像（ramdisk 或分区），可以做 ramdisk 操作或查看分区信息"
-                .to_owned(),
+            "HARMONY! 包装的镜像, 可进行 ramdisk 操作".to_owned(),
         );
     }
 
     // RVT
     if head_len >= 4 && &head[0..4] == RVT_MAGIC {
-        return (
-            FileKind::Rvt,
-            "这是 RVT 密钥镜像（rot\\0），包含分区公钥描述符".to_owned(),
-        );
+        return (FileKind::Rvt, "RVT 密钥镜像, 包含分区公钥描述符".to_owned());
     }
 
     // EROFS magic at offset 1024
@@ -181,7 +171,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     {
         return (
             FileKind::Erofs,
-            "这是 EROFS 分区镜像（如 system/vendor），可以解包或查看分区信息".to_owned(),
+            "EROFS 分区镜像, 可解包或查看分区信息".to_owned(),
         );
     }
 
@@ -194,7 +184,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     {
         return (
             FileKind::HvbWrapped,
-            "这是带 HVB 尾部包装的分区镜像，可以查看分区信息".to_owned(),
+            "HVB 尾部包装的分区镜像, 可查看分区信息".to_owned(),
         );
     }
 

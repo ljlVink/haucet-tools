@@ -38,14 +38,17 @@ impl HomePage {
                         .corner_radius(8),
                 );
             }
-            ui.vertical(|ui| {
-                ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new("欢迎使用 Haucet Tools")
-                        .strong()
-                        .size(22.0),
-                );
-            });
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 72.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.label(
+                        egui::RichText::new("欢迎使用 Haucet Tools")
+                            .strong()
+                            .size(22.0),
+                    );
+                },
+            );
         });
     }
 
@@ -57,18 +60,22 @@ impl HomePage {
         }
 
         let height = 130.0;
-        let (rect, response) = ui.allocate_exact_size(
+        let (rect, _response) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), height),
             egui::Sense::hover(),
         );
-        let hovered = response.hovered()
-            || ui.ctx().input(|input| {
-                input
-                    .raw
-                    .hovered_files
-                    .iter()
-                    .any(|file| file.path.is_some())
-            });
+        let hovered = ui.ctx().input(|input| {
+            let has_hovered_file = input
+                .raw
+                .hovered_files
+                .iter()
+                .any(|file| file.path.is_some());
+            has_hovered_file
+                && input
+                    .pointer
+                    .hover_pos()
+                    .is_none_or(|pos| rect.contains(pos))
+        });
         let fill = if hovered {
             ui.visuals().selection.bg_fill.gamma_multiply(0.6)
         } else {
@@ -89,7 +96,7 @@ impl HomePage {
             egui::StrokeKind::Inside,
         );
         ui.painter().text(
-            rect.center() - egui::vec2(0.0, 14.0),
+            rect.center(),
             egui::Align2::CENTER_CENTER,
             if hovered {
                 "松开以识别文件"
@@ -102,13 +109,6 @@ impl HomePage {
             } else {
                 ui.visuals().text_color()
             },
-        );
-        ui.painter().text(
-            rect.center() + egui::vec2(0.0, 16.0),
-            egui::Align2::CENTER_CENTER,
-            "支持：update_full_base.zip · update.bin · EROFS 镜像 · ramdisk · RVT · cpio · 解包工作区",
-            egui::FontId::proportional(12.0),
-            ui.visuals().weak_text_color(),
         );
     }
 
@@ -162,45 +162,17 @@ impl HomePage {
             .num_columns(columns)
             .spacing([spacing, spacing])
             .show(ui, |ui| {
-                quick_card(
-                    ui,
-                    "解开更新包",
-                    "把 update_full_base.zip 解成工作区，可挑选分区",
-                    Page::Package,
-                    card_width,
-                    app,
-                );
+                quick_card(ui, "解update.zip更新包", Page::Package, card_width, app);
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(
-                    ui,
-                    "给 ramdisk 打补丁",
-                    "替换 init_early，自动检查大小限制",
-                    Page::Ramdisk,
-                    card_width,
-                    app,
-                );
+                quick_card(ui, "给 ramdisk 补丁", Page::Ramdisk, card_width, app);
                 ui.end_row();
-                quick_card(
-                    ui,
-                    "解包/打包 EROFS",
-                    "system / vendor 等分区镜像的展开与重建",
-                    Page::Erofs,
-                    card_width,
-                    app,
-                );
+                quick_card(ui, "解/打包 EROFS", Page::Erofs, card_width, app);
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(
-                    ui,
-                    "查看分区信息",
-                    "识别 HARMONY! / HVB / RVT 并展示细节",
-                    Page::Partition,
-                    card_width,
-                    app,
-                );
+                quick_card(ui, "查看分区信息", Page::Partition, card_width, app);
                 ui.end_row();
             });
     }
@@ -324,22 +296,33 @@ fn default_output_for(input: &str, suffix: &str) -> String {
     }
 }
 
-fn quick_card(
-    ui: &mut egui::Ui,
-    title: &str,
-    description: &str,
-    page: Page,
-    outer_width: f32,
-    app: &mut HaucetApp,
-) {
+fn quick_card(ui: &mut egui::Ui, title: &str, page: Page, outer_width: f32, app: &mut HaucetApp) {
+    let predicted_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(outer_width, 48.0));
+    let hovered = ui.input(|input| {
+        input
+            .pointer
+            .hover_pos()
+            .is_some_and(|pos| predicted_rect.contains(pos))
+    });
+    let visuals = ui.visuals();
+    let fill = if hovered {
+        visuals.widgets.hovered.bg_fill
+    } else {
+        visuals.extreme_bg_color
+    };
+    let stroke = if hovered {
+        visuals.widgets.hovered.bg_stroke
+    } else {
+        visuals.widgets.noninteractive.bg_stroke
+    };
     let response = egui::Frame::group(ui.style())
-        .fill(ui.visuals().extreme_bg_color)
+        .fill(fill)
+        .stroke(stroke)
         .corner_radius(egui::CornerRadius::same(8))
         .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
             ui.set_width((outer_width - 24.0).max(0.0));
             ui.label(egui::RichText::new(title).strong().size(15.0));
-            ui.label(egui::RichText::new(description).weak().size(12.5));
         })
         .response
         .interact(egui::Sense::click());

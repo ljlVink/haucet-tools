@@ -63,14 +63,23 @@ impl HaucetApp {
 impl eframe::App for HaucetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_job();
+        draw_window_background(ctx);
 
-        egui::TopBottomPanel::top("title-bar").show(ctx, |ui| self.title_bar(ui));
+        egui::TopBottomPanel::top("title-bar")
+            .exact_height(38.0)
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| self.title_bar(ui));
         egui::SidePanel::left("nav")
             .resizable(false)
             .exact_width(200.0)
+            .frame(egui::Frame::NONE)
             .show(ctx, |ui| self.nav_panel(ui));
-        egui::TopBottomPanel::bottom("log-panel").show(ctx, |ui| self.log_panel(ui));
-        egui::CentralPanel::default().show(ctx, |ui| self.central(ui));
+        egui::TopBottomPanel::bottom("log-panel")
+            .frame(egui::Frame::NONE)
+            .show(ctx, |ui| self.log_panel(ui));
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(12, 0)))
+            .show(ctx, |ui| self.central(ui));
 
         if !self.font_loaded {
             egui::Area::new("font-warning".into())
@@ -82,7 +91,7 @@ impl eframe::App for HaucetApp {
                         .show(ui, |ui| {
                             ui.label(
                                 egui::RichText::new(
-                                    "未找到中文字体，界面文字可能无法显示。\n请安装 Noto Sans CJK / 微软雅黑 等字体后重启。",
+                                    "未找到中文字体, 界面文字可能无法显示。\n请安装 Noto Sans CJK / 微软雅黑 等字体后重启。",
                                 )
                                 .color(egui::Color32::from_rgb(255, 220, 160)),
                             );
@@ -97,6 +106,10 @@ impl eframe::App for HaucetApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.settings.save();
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
     }
 }
 
@@ -247,42 +260,61 @@ impl HaucetApp {
     }
 
     fn title_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new("Haucet Tools").strong().size(18.0));
-            ui.label(egui::RichText::new("·").weak());
-            ui.label(egui::RichText::new(self.current.title()).size(15.0));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if let Some(job) = &mut self.job {
-                    ui.add(egui::Spinner::new().size(16.0));
-                    ui.label(
-                        egui::RichText::new(format!("运行中 {}s", job.elapsed().as_secs()))
-                            .strong(),
-                    );
-                    if ui.button("取消").clicked() {
-                        self.cancel_job();
-                    }
-                } else if let Some((_, result)) = &self.last_result {
-                    if result.cancelled {
-                        pages::badge_text(
-                            ui,
-                            "上次任务已取消",
-                            egui::Color32::from_rgb(230, 170, 40),
-                        );
-                    } else if result.ok {
-                        pages::badge_text(
-                            ui,
-                            "上次任务成功",
-                            egui::Color32::from_rgb(90, 200, 120),
-                        );
-                    } else {
-                        pages::badge_text(ui, "上次任务失败", egui::Color32::from_rgb(230, 90, 90));
-                    }
-                } else {
-                    ui.label(egui::RichText::new("空闲").weak());
-                }
-            });
+        let rect = ui.max_rect();
+        let bottom = rect.left_bottom() + egui::vec2(rect.width(), 0.0);
+        ui.painter().line_segment(
+            [rect.left_bottom(), bottom],
+            ui.visuals().widgets.noninteractive.bg_stroke,
+        );
+
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.add_space(12.0);
+
+            let title_response = ui.add(
+                egui::Label::new(egui::RichText::new("Haucet Tools").strong().size(17.0))
+                    .sense(egui::Sense::click_and_drag()),
+            );
+            handle_title_bar_response(ui, &title_response);
+
+            let status_width = if self.job.is_some() { 260.0 } else { 64.0 };
+            let controls_width = 118.0;
+            let spacer_width =
+                (ui.available_width() - status_width - controls_width - 14.0).max(0.0);
+            let spacer_response = ui.allocate_response(
+                egui::vec2(spacer_width, 32.0),
+                egui::Sense::click_and_drag(),
+            );
+            handle_title_bar_response(ui, &spacer_response);
+
+            ui.allocate_ui_with_layout(
+                egui::vec2(status_width, 32.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| self.title_status(ui),
+            );
+            ui.separator();
+            window_controls(ui);
         });
+    }
+
+    fn title_status(&mut self, ui: &mut egui::Ui) {
+        if let Some(job) = &mut self.job {
+            ui.add(egui::Spinner::new().size(16.0));
+            ui.label(egui::RichText::new(format!("运行中 {}s", job.elapsed().as_secs())).strong());
+            if ui.button("取消").clicked() {
+                self.cancel_job();
+            }
+        } else if let Some((_, result)) = &self.last_result {
+            if result.cancelled {
+                pages::badge_text(ui, "上次任务已取消", egui::Color32::from_rgb(230, 170, 40));
+            } else if result.ok {
+                pages::badge_text(ui, "上次任务成功", egui::Color32::from_rgb(90, 200, 120));
+            } else {
+                pages::badge_text(ui, "上次任务失败", egui::Color32::from_rgb(230, 90, 90));
+            }
+        } else {
+            ui.label(egui::RichText::new("空闲").weak());
+        }
     }
 
     fn nav_panel(&mut self, ui: &mut egui::Ui) {
@@ -300,12 +332,17 @@ impl HaucetApp {
         ui.add_space(12.0);
         ui.separator();
         ui.add_space(4.0);
-        ui.label(egui::RichText::new("关于").weak());
-        ui.label(
-            egui::RichText::new("Huawei/HarmonyOS 镜像工具")
-                .weak()
-                .size(11.0),
-        );
+        ui.horizontal(|ui| {
+            ui.add_space(10.0);
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new("关于").weak());
+                ui.label(
+                    egui::RichText::new("Huawei/HarmonyOS 镜像工具")
+                        .weak()
+                        .size(11.0),
+                );
+            });
+        });
     }
 
     fn log_panel(&mut self, ui: &mut egui::Ui) {
@@ -338,44 +375,56 @@ impl HaucetApp {
     }
 
     fn central(&mut self, ui: &mut egui::Ui) {
-        match self.current {
-            Page::Home => {
-                let mut page = std::mem::take(&mut self.home);
-                page.ui(ui, self);
-                self.home = page;
+        let current = self.current;
+        ui.scope(|ui| {
+            apply_content_text_style(ui);
+            match current {
+                Page::Home => {
+                    let mut page = std::mem::take(&mut self.home);
+                    page.ui(ui, self);
+                    self.home = page;
+                }
+                Page::Package => {
+                    let mut page = std::mem::take(&mut self.package);
+                    page.ui(ui, self);
+                    self.package = page;
+                }
+                Page::UpdateBin => {
+                    let mut page = std::mem::take(&mut self.update_bin);
+                    page.ui(ui, self);
+                    self.update_bin = page;
+                }
+                Page::Erofs => {
+                    let mut page = std::mem::take(&mut self.erofs);
+                    page.ui(ui, self);
+                    self.erofs = page;
+                }
+                Page::Ramdisk => {
+                    let mut page = std::mem::take(&mut self.ramdisk);
+                    page.ui(ui, self);
+                    self.ramdisk = page;
+                }
+                Page::Partition => {
+                    let mut page = std::mem::take(&mut self.partition);
+                    page.ui(ui, self);
+                    self.partition = page;
+                }
+                Page::Cpio => {
+                    let mut page = std::mem::take(&mut self.cpio);
+                    page.ui(ui, self);
+                    self.cpio = page;
+                }
             }
-            Page::Package => {
-                let mut page = std::mem::take(&mut self.package);
-                page.ui(ui, self);
-                self.package = page;
-            }
-            Page::UpdateBin => {
-                let mut page = std::mem::take(&mut self.update_bin);
-                page.ui(ui, self);
-                self.update_bin = page;
-            }
-            Page::Erofs => {
-                let mut page = std::mem::take(&mut self.erofs);
-                page.ui(ui, self);
-                self.erofs = page;
-            }
-            Page::Ramdisk => {
-                let mut page = std::mem::take(&mut self.ramdisk);
-                page.ui(ui, self);
-                self.ramdisk = page;
-            }
-            Page::Partition => {
-                let mut page = std::mem::take(&mut self.partition);
-                page.ui(ui, self);
-                self.partition = page;
-            }
-            Page::Cpio => {
-                let mut page = std::mem::take(&mut self.cpio);
-                page.ui(ui, self);
-                self.cpio = page;
-            }
-        }
+        });
     }
+}
+
+fn apply_content_text_style(ui: &mut egui::Ui) {
+    let text_styles = &mut ui.style_mut().text_styles;
+    text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(15.5));
+    text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(15.5));
+    text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(14.5));
+    text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(13.0));
 }
 
 impl Default for HaucetApp {
@@ -384,6 +433,78 @@ impl Default for HaucetApp {
         // through new().
         unreachable!("HaucetApp is constructed through new()")
     }
+}
+
+fn draw_window_background(ctx: &egui::Context) {
+    let rect = ctx.screen_rect();
+    let radius = if is_maximized(ctx) {
+        egui::CornerRadius::ZERO
+    } else {
+        egui::CornerRadius::same(10)
+    };
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    painter.rect_filled(rect, radius, egui::Color32::from_rgb(24, 24, 24));
+    painter.rect_stroke(
+        rect.shrink(0.5),
+        radius,
+        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(58, 58, 58)),
+        egui::StrokeKind::Inside,
+    );
+    if !is_maximized(ctx) {
+        painter.rect_stroke(
+            rect.shrink(1.5),
+            radius,
+            egui::Stroke::new(
+                1.0_f32,
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 18),
+            ),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
+fn handle_title_bar_response(ui: &egui::Ui, response: &egui::Response) {
+    if response.double_clicked() {
+        toggle_maximized(ui.ctx());
+    } else if response.is_pointer_button_down_on()
+        && ui.input(|input| input.pointer.primary_pressed())
+    {
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+    }
+}
+
+fn window_controls(ui: &mut egui::Ui) {
+    if window_button(ui, "-", "最小化").clicked() {
+        ui.ctx()
+            .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+    }
+
+    let maximized = is_maximized(ui.ctx());
+    let max_label = if maximized { "❐" } else { "□" };
+    let max_tooltip = if maximized { "还原" } else { "最大化" };
+    if window_button(ui, max_label, max_tooltip).clicked() {
+        toggle_maximized(ui.ctx());
+    }
+
+    if window_button(ui, "×", "关闭").clicked() {
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+}
+
+fn window_button(ui: &mut egui::Ui, label: &str, tooltip: &str) -> egui::Response {
+    ui.add_sized(
+        [34.0, 28.0],
+        egui::Button::new(egui::RichText::new(label).size(16.0)),
+    )
+    .on_hover_text(tooltip)
+}
+
+fn toggle_maximized(ctx: &egui::Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized(ctx)));
+}
+
+fn is_maximized(ctx: &egui::Context) -> bool {
+    ctx.input(|input| input.viewport().maximized.unwrap_or(false))
 }
 
 fn job_label(op: &JobOp) -> &'static str {

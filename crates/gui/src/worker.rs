@@ -284,7 +284,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 payload["layout_known"].as_bool().unwrap_or(false),
             ) {
                 (true, _) => "该镜像已打过补丁（存在 .backup/init_early）".to_owned(),
-                (false, true) => "原厂镜像，可以打补丁".to_owned(),
+                (false, true) => "原厂镜像, 可以打补丁".to_owned(),
                 _ => "未识别的 ramdisk 布局".to_owned(),
             };
             Ok(WorkerResult {

@@ -18,14 +18,14 @@ fn main() -> eframe::Result<()> {
         std::process::exit(worker::run_worker());
     }
 
-    // 解码头像：既用于窗口图标，也用于快速开始页的 logo 纹理。
     let (icon, logo_rgba) = load_logo();
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1180.0, 800.0])
         .with_min_inner_size([980.0, 640.0])
         .with_title("Haucet Tools")
-        .with_decorations(false);
+        .with_decorations(false)
+        .with_transparent(true);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(Arc::new(icon));
     }

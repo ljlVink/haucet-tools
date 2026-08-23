@@ -1,5 +1,6 @@
 use crate::worker::{self, JobOp, JobSpec, WorkerResult};
 use anyhow::{Context, Result};
+use common::process::hide_command_window;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -50,7 +51,9 @@ impl RunningJob {
 
 pub fn start(op: JobOp) -> Result<RunningJob> {
     let spec = JobSpec { op: op.clone() };
-    let mut child = Command::new(std::env::current_exe().context("定位当前可执行文件")?)
+    let mut command = Command::new(std::env::current_exe().context("定位当前可执行文件")?);
+    hide_command_window(&mut command);
+    let mut child = command
         .env(worker::WORKER_ENV, "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -115,7 +118,7 @@ pub fn start(op: JobOp) -> Result<RunningJob> {
                 summary: if cancelled {
                     "任务已取消（可能残留部分临时文件）".to_owned()
                 } else {
-                    "工作进程异常退出，未返回结果".to_owned()
+                    "工作进程异常退出, 未返回结果".to_owned()
                 },
                 payload: None,
             }));

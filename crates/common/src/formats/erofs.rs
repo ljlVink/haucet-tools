@@ -1,5 +1,6 @@
 use super::hvb::{HvbFooter, HvbWrapper};
 use crate::fs_util;
+use crate::process::hide_command_window;
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -399,7 +400,8 @@ fn validate_with_extractor(image: &Path, workspace: &Path, tools: &ToolPaths) ->
         fs::remove_dir_all(&validation)?;
     }
     fs::create_dir_all(&validation)?;
-    let status = Command::new(&tools.extract_erofs)
+    let mut command = Command::new(&tools.extract_erofs);
+    command
         .arg("-x")
         .arg("--only-cfg")
         .arg("-i")
@@ -407,7 +409,9 @@ fn validate_with_extractor(image: &Path, workspace: &Path, tools: &ToolPaths) ->
         .arg("-o")
         .arg(&validation)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    hide_command_window(&mut command);
+    let status = command
         .status()
         .context("running extract.erofs validation")?;
     let _ = fs::remove_dir_all(&validation);
@@ -429,6 +433,7 @@ fn copy_raw_partition(source: &Path, destination: &Path, final_size: u64) -> Res
 }
 
 fn run_status(command: &mut Command, name: &str) -> Result<()> {
+    hide_command_window(command);
     let status = command
         .status()
         .with_context(|| format!("running {name}"))?;
@@ -451,8 +456,10 @@ fn sha256_file(path: &Path) -> Result<String> {
 }
 
 fn tool_version(tool: &Path) -> String {
-    Command::new(tool)
-        .arg("--version")
+    let mut command = Command::new(tool);
+    command.arg("--version");
+    hide_command_window(&mut command);
+    command
         .output()
         .map(|output| {
             let mut bytes = output.stdout;

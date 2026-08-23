@@ -87,7 +87,6 @@ impl ErofsPage {
         });
     }
 
-    /// 选择工作区后，直接读 haucet-erofs.json 展示信息（小文件，同步读）。
     fn poll_manifest(&mut self) {
         let workspace = self.repack.workspace.trim().to_owned();
         if workspace.is_empty() {
@@ -158,17 +157,6 @@ impl ErofsPage {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.unpack.force, "覆盖已存在的工作区");
-            ui.label("工具目录");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.unpack.tools_dir)
-                    .hint_text("留空自动查找")
-                    .desired_width(180.0),
-            );
-            if ui.button("浏览…").clicked()
-                && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
-            {
-                self.unpack.tools_dir = dir.display().to_string();
-            }
         });
         ui.add_space(8.0);
         let ready = !app.job_running()
@@ -240,7 +228,7 @@ impl ErofsPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "注意：重新打包不会重新签名 HVB 证书。设备安全启动（secure boot）可能拒绝新镜像，"
+                "注意：重新打包不会重新签名 HVB 证书。设备安全启动（secure boot）可能拒绝新镜像, "
                     .to_owned()
                     + "即使文件结构完全合法。",
             );
@@ -265,16 +253,6 @@ impl ErofsPage {
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.repack.allow_grow, "允许镜像超过原始大小");
             ui.label("工具目录");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.repack.tools_dir)
-                    .hint_text("留空自动查找")
-                    .desired_width(180.0),
-            );
-            if ui.button("浏览…").clicked()
-                && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
-            {
-                self.repack.tools_dir = dir.display().to_string();
-            }
         });
         ui.add_space(8.0);
         let ready = !app.job_running()

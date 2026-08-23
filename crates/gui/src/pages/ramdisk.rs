@@ -204,7 +204,7 @@ impl RamdiskPage {
 
     fn patch_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把自制的 init_early 二进制替换进 ramdisk，并自动腾出空间").weak(),
+            egui::RichText::new("把自制的 init_early 二进制替换进 ramdisk, 并自动腾出空间").weak(),
         );
         ui.add_space(4.0);
         message_box(
@@ -258,12 +258,12 @@ impl RamdiskPage {
                         if probe.patched {
                             badge_text(ui, "已打过补丁", egui::Color32::from_rgb(230, 170, 40));
                             ui.label(
-                                egui::RichText::new("再次打补丁会失败，请使用原厂镜像").weak(),
+                                egui::RichText::new("再次打补丁会失败, 请使用原厂镜像").weak(),
                             );
                         } else if probe.layout_known {
                             badge_text(
                                 ui,
-                                "原厂镜像，可以打补丁",
+                                "原厂镜像, 可以打补丁",
                                 egui::Color32::from_rgb(90, 200, 120),
                             );
                         } else {

@@ -19,8 +19,6 @@ pub struct Settings {
     pub all_erofs: bool,
     /// update.bin 布局: "auto" | "l1" | "l2"
     pub layout: String,
-    /// EROFS 工具目录（为空则自动查找）
-    pub tools_dir: String,
     pub cpio_extract_dir: Option<String>,
 }
 
@@ -35,7 +33,6 @@ impl Default for Settings {
             allow_grow: false,
             all_erofs: false,
             layout: "auto".to_owned(),
-            tools_dir: String::new(),
             cpio_extract_dir: None,
         }
     }

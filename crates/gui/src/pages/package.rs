@@ -54,7 +54,7 @@ impl PackagePage {
                         ui,
                         "读取包内容",
                         !app.job_running() && !self.input.trim().is_empty(),
-                        Some("解析包内的 update.bin 组件表，无需解包"),
+                        Some("解析包内的 update.bin 组件表, 无需解包"),
                     )
                     .clicked()
                     {
@@ -89,25 +89,11 @@ impl PackagePage {
                                         }
                                     });
                                 ui.end_row();
-                                ui.label("EROFS 工具目录");
-                                ui.horizontal(|ui| {
-                                    ui.add(
-                                        egui::TextEdit::singleline(&mut self.tools_dir)
-                                            .hint_text("留空则自动查找 bin/")
-                                            .desired_width(300.0),
-                                    );
-                                    if ui.button("浏览…").clicked()
-                                        && let Some(dir) = app.pick_dir("选择 EROFS 工具目录")
-                                    {
-                                        self.tools_dir = dir.display().to_string();
-                                    }
-                                });
-                                ui.end_row();
                                 ui.label("自定义分区");
                                 ui.add(
                                     egui::TextEdit::singleline(&mut self.custom_partitions)
                                         .hint_text(
-                                            "可选：逗号分隔，如 system, vendor；留空则使用下方勾选",
+                                            "可选：逗号分隔, 如 system, vendor；留空则使用下方勾选",
                                         )
                                         .desired_width(380.0),
                                 );
@@ -121,6 +107,10 @@ impl PackagePage {
                             });
                     });
 
+                ui.add_space(10.0);
+                section(ui, "输出");
+                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
+
                 ui.add_space(8.0);
                 if let Some(message) = &self.inspect_message {
                     message_box(ui, egui::Color32::from_rgb(90, 170, 255), message);
@@ -130,9 +120,6 @@ impl PackagePage {
                     self.partition_table(ui, &index);
                 }
 
-                ui.add_space(10.0);
-                section(ui, "输出");
-                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let ready = !app.job_running()
@@ -190,7 +177,7 @@ impl PackagePage {
                 .map(|component| component.component_type == 0)
                 .collect();
             self.inspect_message = Some(format!(
-                "包内共 {} 个组件（其中 {} 个分区镜像），已自动勾选全部镜像分区；其余文件会解包到 package/ 目录。",
+                "包内共 {} 个组件, {} 个分区镜像",
                 index.components.len(),
                 image_count
             ));
@@ -258,7 +245,7 @@ impl PackagePage {
             .column(Column::auto().at_least(90.0))
             .column(Column::auto().at_least(90.0))
             .column(Column::remainder().at_least(120.0))
-            .header(22.0, |mut header| {
+            .header(24.0, |mut header| {
                 header.col(|ui| {
                     ui.strong("解包");
                 });
@@ -278,7 +265,7 @@ impl PackagePage {
             .body(|mut body| {
                 for (position, component) in components.iter().enumerate() {
                     let selectable = component.component_type == 0;
-                    body.row(22.0, |mut row| {
+                    body.row(20.0, |mut row| {
                         row.col(|ui| {
                             if selectable {
                                 ui.checkbox(&mut checked[position], "");

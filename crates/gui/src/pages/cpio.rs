@@ -443,7 +443,6 @@ impl CpioPage {
                 .unwrap_or(false);
             if is_dir {
                 let default_open = self.expand || dir.is_empty();
-                // 展开状态并入 id，让“展开全部/折叠全部”立即生效。
                 egui::CollapsingHeader::new(format!("📁 {name}"))
                     .id_salt(("cpio-dir", full.as_str(), self.expand))
                     .default_open(default_open)
@@ -635,7 +634,7 @@ impl CpioPage {
             if loaded.from_image {
                 ui.label(
                     egui::RichText::new(
-                        "内容来自镜像：修改后请“另存为”cpio，再到 Ramdisk 页重新打包",
+                        "内容来自镜像：修改后请“另存为”cpio, 再到 Ramdisk 页重新打包",
                     )
                     .weak(),
                 );

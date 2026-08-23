@@ -56,7 +56,7 @@ impl UpdateBinPage {
                         ui,
                         "读取组件索引",
                         !app.job_running() && !self.input.trim().is_empty(),
-                        Some("解析 180 字节头部与组件表，仅需几毫秒"),
+                        Some("解析头部与组件表"),
                     )
                     .clicked()
                     {
@@ -214,7 +214,7 @@ impl UpdateBinPage {
                 ui.ctx().copy_text(copy);
             }
             ui.label(
-                egui::RichText::new("提示：点击行可选中/取消，勾选决定“解包勾选组件”的内容").weak(),
+                egui::RichText::new("提示：点击行可选中/取消, 勾选决定“解包勾选组件”的内容").weak(),
             );
         });
         ui.add_space(4.0);
@@ -228,7 +228,7 @@ impl UpdateBinPage {
             .column(Column::auto().at_least(80.0))
             .column(Column::auto().at_least(90.0))
             .column(Column::remainder().at_least(120.0))
-            .header(22.0, |mut header| {
+            .header(24.0, |mut header| {
                 header.col(|ui| {
                     ui.strong("解包");
                 });
@@ -248,7 +248,7 @@ impl UpdateBinPage {
             .body(|mut body| {
                 for position in 0..components.len() {
                     let component = &components[position];
-                    body.row(22.0, |mut row| {
+                    body.row(24.0, |mut row| {
                         row.col(|ui| {
                             if ui.checkbox(&mut checked[position], "").changed() {
                                 let _ = component;

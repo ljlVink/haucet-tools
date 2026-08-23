@@ -93,7 +93,7 @@ pub fn message_box(ui: &mut egui::Ui, color: egui::Color32, text: impl Into<egui
 
 pub fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).strong().size(15.0));
+    ui.label(egui::RichText::new(title).strong().size(16.0));
     ui.add_space(2.0);
 }
 
