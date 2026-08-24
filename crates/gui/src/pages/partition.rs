@@ -249,7 +249,7 @@ impl PartitionPage {
                     ui,
                     "每分区密钥数",
                     if rvt.raw_key_count == 0 {
-                        "0（旧版, 按 1 处理）".to_owned()
+                        "0(旧版, 按 1 处理)".to_owned()
                     } else {
                         rvt.raw_key_count.to_string()
                     },
@@ -297,7 +297,7 @@ impl PartitionPage {
                     ui.strong("密钥长度");
                 });
                 header.col(|ui| {
-                    ui.strong("公钥 SHA256（前 16 位）");
+                    ui.strong("公钥 SHA256(前 16 位)");
                 });
                 header.col(|ui| {
                     ui.strong("备份密钥");

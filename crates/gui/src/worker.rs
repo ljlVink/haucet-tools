@@ -132,7 +132,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             let index = package::inspect(Path::new(input), parse_layout(layout)?)?;
             summary_payload(
                 format!(
-                    "包内共 {} 个组件（检测到 {} 布局）",
+                    "包内共 {} 个组件(检测到 {} 布局)",
                     index.components.len(),
                     layout_label(index.layout)
                 ),
@@ -174,7 +174,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             )?;
             summary_payload(
                 format!(
-                    "共 {} 个组件（检测到 {} 布局）",
+                    "共 {} 个组件(检测到 {} 布局)",
                     index.components.len(),
                     layout_label(index.layout)
                 ),
@@ -223,7 +223,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             let manifest = erofs::read_manifest(Path::new(output))?;
             summary_payload(
                 format!(
-                    "EROFS 镜像已解包到 {}（分区 {}）",
+                    "EROFS 镜像已解包到 {}(分区 {})",
                     output, manifest.partition
                 ),
                 manifest,
@@ -291,7 +291,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 payload["patched"].as_bool().unwrap_or(false),
                 payload["layout_known"].as_bool().unwrap_or(false),
             ) {
-                (true, _) => "该镜像已打过补丁（存在 .backup/init_early）".to_owned(),
+                (true, _) => "该镜像已打过补丁(存在 .backup/init_early)".to_owned(),
                 (false, true) => "原厂镜像, 可以打补丁".to_owned(),
                 _ => "未识别的 ramdisk 布局".to_owned(),
             };
@@ -305,10 +305,10 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             let summary = partition::summarize(Path::new(image))?;
             let label = match &summary {
                 partition::PartitionSummary::Harmony(h) => {
-                    format!("HARMONY! 分区镜像（{}）", h.cert.partition_name)
+                    format!("HARMONY! 分区镜像({})", h.cert.partition_name)
                 }
                 partition::PartitionSummary::Rvt(info) => {
-                    format!("RVT 密钥镜像（{} 个描述符）", info.descriptors.len())
+                    format!("RVT 密钥镜像({} 个描述符)", info.descriptors.len())
                 }
                 partition::PartitionSummary::HvbWrapped { .. } => "HVB 包装的分区镜像".to_owned(),
             };

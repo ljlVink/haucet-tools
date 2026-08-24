@@ -151,7 +151,7 @@ fn split_path(path: &str) -> (String, String) {
 }
 
 /// TODO REMOVE
-/// 快速判断文件是否以 HARMONY! 头开始（ramdisk 镜像）。
+/// 快速判断文件是否以 HARMONY! 头开始(ramdisk 镜像)。
 fn is_harmony_image(path: &std::path::Path) -> bool {
     use std::io::Read;
     let Ok(mut file) = std::fs::File::open(path) else {
@@ -300,7 +300,7 @@ impl CpioPage {
                 self.message = Some((
                     true,
                     format!(
-                        "已加载 {} 个条目（来源：{}）",
+                        "已加载 {} 个条目(来源：{})",
                         loaded.cpio.entries.len(),
                         label
                     ),
@@ -335,13 +335,13 @@ impl CpioPage {
             } else if loaded.cpio.exists("bin/init_early") {
                 badge_text(
                     ui,
-                    "原厂（bin/init_early 存在）",
+                    "原厂(bin/init_early 存在)",
                     egui::Color32::from_rgb(90, 200, 120),
                 );
             } else if loaded.cpio.exists("init") {
                 badge_text(
                     ui,
-                    "原厂（init 存在）",
+                    "原厂(init 存在)",
                     egui::Color32::from_rgb(90, 200, 120),
                 );
             } else {
@@ -380,7 +380,6 @@ impl CpioPage {
             if ui.button("折叠全部").clicked() {
                 self.expand = false;
             }
-            ui.label(egui::RichText::new("单击选中条目 · 双击复制路径").weak());
         });
         ui.add_space(2.0);
 

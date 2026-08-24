@@ -35,7 +35,7 @@ pub struct RepackState {
     pub tools_dir: String,
     pub manifest: Option<ErofsManifest>,
     pub manifest_error: Option<String>,
-    /// 当前 manifest 来自哪个工作区路径（避免每帧重复读取）。
+    /// 当前 manifest 来自哪个工作区路径(避免每帧重复读取)。
     pub manifest_from: String,
 }
 
@@ -114,7 +114,7 @@ impl ErofsPage {
 
     fn unpack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把 EROFS 分区镜像（system.img、vendor.img 等）解成可编辑的工作区")
+            egui::RichText::new("把 EROFS 分区镜像(system.img、vendor.img 等)解成可编辑的工作区")
                 .weak(),
         );
         ui.add_space(6.0);
@@ -174,7 +174,7 @@ impl ErofsPage {
 
     fn repack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
-            egui::RichText::new("把解包出来的工作区重新打包成分区镜像（保留原 HVB 证书）").weak(),
+            egui::RichText::new("把解包出来的工作区重新打包成分区镜像(保留原 HVB 证书)").weak(),
         );
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -215,7 +215,7 @@ impl ErofsPage {
                                 ui,
                                 "HVB 证书",
                                 if manifest.hvb.is_some() {
-                                    "保留（未重新签名）"
+                                    "保留(未重新签名)"
                                 } else {
                                     "无"
                                 },
@@ -228,7 +228,7 @@ impl ErofsPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "注意：重新打包不会重新签名 HVB 证书。设备安全启动（secure boot）可能拒绝新镜像, "
+                "注意：重新打包不会重新签名 HVB 证书。设备安全启动(secure boot)可能拒绝新镜像, "
                     .to_owned()
                     + "即使文件结构完全合法。",
             );

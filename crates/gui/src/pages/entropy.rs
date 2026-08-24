@@ -29,7 +29,7 @@ pub(crate) fn render_summary(ui: &mut egui::Ui, summary: &EntropySummary) {
                     ui,
                     "最常见字节",
                     format!(
-                        "0x{:02X}（{} 字节, {:.2}%）",
+                        "0x{:02X}({} 字节, {:.2}%)",
                         byte.byte,
                         byte.count,
                         byte.ratio * 100.0

@@ -116,7 +116,7 @@ pub fn start(op: JobOp) -> Result<RunningJob> {
                 ok: false,
                 cancelled,
                 summary: if cancelled {
-                    "任务已取消（可能残留部分临时文件）".to_owned()
+                    "任务已取消(可能残留部分临时文件)".to_owned()
                 } else {
                     "工作进程异常退出, 未返回结果".to_owned()
                 },

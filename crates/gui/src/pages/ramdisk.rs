@@ -157,7 +157,7 @@ impl RamdiskPage {
     fn repack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.label(
             egui::RichText::new(
-                "用解包工作区里的 ramdisk.cpio 重建镜像（需要原始镜像以保留 HVB 头）",
+                "用解包工作区里的 ramdisk.cpio 重建镜像(需要原始镜像以保留 HVB 头)",
             )
             .weak(),
         );

@@ -21,17 +21,17 @@ pub enum FileKind {
     UpdateBin,
     /// EROFS 分区镜像
     Erofs,
-    /// HARMONY! 头（ramdisk 或分区镜像）
+    /// HARMONY! 头(ramdisk 或分区镜像)
     HarmonyFrame,
     /// RVT (rot\0) 密钥镜像
     Rvt,
     /// 仅有 HVB 尾部包装的分区镜像
     HvbWrapped,
-    /// 裸 cpio 归档（ramdisk.cpio）
+    /// 裸 cpio 归档(ramdisk.cpio)
     Cpio,
-    /// EROFS 解包工作区（含 haucet-erofs.json）
+    /// EROFS 解包工作区(含 haucet-erofs.json)
     ErofsWorkspace,
-    /// Ramdisk 工作区（含 ramdisk.cpio）
+    /// Ramdisk 工作区(含 ramdisk.cpio)
     RamdiskWorkspace,
 }
 
@@ -138,7 +138,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
             return (
                 FileKind::UpdateBin,
                 format!(
-                    "update.bin 组件包（{} 个分区）, 可以查看和解包分区",
+                    "update.bin 组件包({} 个分区), 可以查看和解包分区",
                     compinfo_len / 71
                 ),
             );

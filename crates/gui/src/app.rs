@@ -65,23 +65,14 @@ impl HaucetApp {
 impl eframe::App for HaucetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_job();
-        draw_window_background(ctx);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
 
-        egui::TopBottomPanel::top("title-bar")
-            .exact_height(38.0)
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| self.title_bar(ui));
         egui::SidePanel::left("nav")
             .resizable(false)
             .exact_width(200.0)
-            .frame(egui::Frame::NONE)
             .show(ctx, |ui| self.nav_panel(ui));
-        egui::TopBottomPanel::bottom("log-panel")
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| self.log_panel(ui));
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(12, 0)))
-            .show(ctx, |ui| self.central(ui));
+        egui::TopBottomPanel::bottom("log-panel").show(ctx, |ui| self.log_panel(ui));
+        egui::CentralPanel::default().show(ctx, |ui| self.central(ui));
 
         if !self.font_loaded {
             egui::Area::new("font-warning".into())
@@ -108,10 +99,6 @@ impl eframe::App for HaucetApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.settings.save();
-    }
-
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
     }
 }
 
@@ -261,62 +248,21 @@ impl HaucetApp {
         })
     }
 
-    fn title_bar(&mut self, ui: &mut egui::Ui) {
-        let rect = ui.max_rect();
-        let bottom = rect.left_bottom() + egui::vec2(rect.width(), 0.0);
-        ui.painter().line_segment(
-            [rect.left_bottom(), bottom],
-            ui.visuals().widgets.noninteractive.bg_stroke,
-        );
-
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            ui.add_space(12.0);
-
-            let title_response = ui.add(
-                egui::Label::new(egui::RichText::new("Haucet Tools").strong().size(17.0))
-                    .sense(egui::Sense::click_and_drag()),
-            );
-            handle_title_bar_response(ui, &title_response);
-
-            let status_width = if self.job.is_some() { 260.0 } else { 64.0 };
-            let controls_width = 118.0;
-            let spacer_width =
-                (ui.available_width() - status_width - controls_width - 14.0).max(0.0);
-            let spacer_response = ui.allocate_response(
-                egui::vec2(spacer_width, 32.0),
-                egui::Sense::click_and_drag(),
-            );
-            handle_title_bar_response(ui, &spacer_response);
-
-            ui.allocate_ui_with_layout(
-                egui::vec2(status_width, 32.0),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| self.title_status(ui),
-            );
-            ui.separator();
-            window_controls(ui);
-        });
-    }
-
-    fn title_status(&mut self, ui: &mut egui::Ui) {
-        if let Some(job) = &mut self.job {
-            ui.add(egui::Spinner::new().size(16.0));
-            ui.label(egui::RichText::new(format!("运行中 {}s", job.elapsed().as_secs())).strong());
-            if ui.button("取消").clicked() {
-                self.cancel_job();
-            }
+    fn window_title(&self) -> String {
+        let status = if let Some(job) = &self.job {
+            format!("运行中 {}s", job.elapsed().as_secs())
         } else if let Some((_, result)) = &self.last_result {
             if result.cancelled {
-                pages::badge_text(ui, "上次任务已取消", egui::Color32::from_rgb(230, 170, 40));
+                "上次任务已取消".to_owned()
             } else if result.ok {
-                pages::badge_text(ui, "上次任务成功", egui::Color32::from_rgb(90, 200, 120));
+                "上次任务成功".to_owned()
             } else {
-                pages::badge_text(ui, "上次任务失败", egui::Color32::from_rgb(230, 90, 90));
+                "上次任务失败".to_owned()
             }
         } else {
-            ui.label(egui::RichText::new("空闲").weak());
-        }
+            "空闲".to_owned()
+        };
+        format!("Haucet Tools - {status}")
     }
 
     fn nav_panel(&mut self, ui: &mut egui::Ui) {
@@ -360,6 +306,9 @@ impl HaucetApp {
             }
             if let Some(job) = &self.job {
                 ui.label(egui::RichText::new(job_label(&job.op)).weak());
+            }
+            if self.job.is_some() && ui.button("取消任务").clicked() {
+                self.cancel_job();
             }
         });
         if self.settings.show_log && !self.logs.is_empty() {
@@ -440,78 +389,6 @@ impl Default for HaucetApp {
         // through new().
         unreachable!("HaucetApp is constructed through new()")
     }
-}
-
-fn draw_window_background(ctx: &egui::Context) {
-    let rect = ctx.screen_rect();
-    let radius = if is_maximized(ctx) {
-        egui::CornerRadius::ZERO
-    } else {
-        egui::CornerRadius::same(10)
-    };
-    let painter = ctx.layer_painter(egui::LayerId::background());
-    painter.rect_filled(rect, radius, egui::Color32::from_rgb(24, 24, 24));
-    painter.rect_stroke(
-        rect.shrink(0.5),
-        radius,
-        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(58, 58, 58)),
-        egui::StrokeKind::Inside,
-    );
-    if !is_maximized(ctx) {
-        painter.rect_stroke(
-            rect.shrink(1.5),
-            radius,
-            egui::Stroke::new(
-                1.0_f32,
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 18),
-            ),
-            egui::StrokeKind::Inside,
-        );
-    }
-}
-
-fn handle_title_bar_response(ui: &egui::Ui, response: &egui::Response) {
-    if response.double_clicked() {
-        toggle_maximized(ui.ctx());
-    } else if response.is_pointer_button_down_on()
-        && ui.input(|input| input.pointer.primary_pressed())
-    {
-        ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-    }
-}
-
-fn window_controls(ui: &mut egui::Ui) {
-    if window_button(ui, "-", "最小化").clicked() {
-        ui.ctx()
-            .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-    }
-
-    let maximized = is_maximized(ui.ctx());
-    let max_label = if maximized { "❐" } else { "□" };
-    let max_tooltip = if maximized { "还原" } else { "最大化" };
-    if window_button(ui, max_label, max_tooltip).clicked() {
-        toggle_maximized(ui.ctx());
-    }
-
-    if window_button(ui, "×", "关闭").clicked() {
-        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-    }
-}
-
-fn window_button(ui: &mut egui::Ui, label: &str, tooltip: &str) -> egui::Response {
-    ui.add_sized(
-        [34.0, 28.0],
-        egui::Button::new(egui::RichText::new(label).size(16.0)),
-    )
-    .on_hover_text(tooltip)
-}
-
-fn toggle_maximized(ctx: &egui::Context) {
-    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized(ctx)));
-}
-
-fn is_maximized(ctx: &egui::Context) -> bool {
-    ctx.input(|input| input.viewport().maximized.unwrap_or(false))
 }
 
 fn job_label(op: &JobOp) -> &'static str {

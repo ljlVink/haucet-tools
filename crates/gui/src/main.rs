@@ -23,9 +23,8 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1180.0, 800.0])
         .with_min_inner_size([980.0, 640.0])
-        .with_title("Haucet Tools")
-        .with_decorations(false)
-        .with_transparent(true);
+        .with_title("Haucet Tools - 空闲")
+        .with_decorations(true);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(Arc::new(icon));
     }

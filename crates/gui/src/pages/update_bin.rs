@@ -153,7 +153,7 @@ impl UpdateBinPage {
         {
             self.checked = vec![true; index.components.len()];
             self.message = Some(format!(
-                "共 {} 个组件（检测到 {} 布局）。双击组件名可复制。",
+                "共 {} 个组件(检测到 {} 布局)。双击组件名可复制。",
                 index.components.len(),
                 layout_label(&index.layout)
             ));

@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Fastboot protocol implementation for Huawei/HarmonyOS devices (fork of fastboot-rs)"
-readme = "README.md"
 repository = "https://github.com/boardswarm/fastboot-rs"
 
 [dependencies]
@@ -18,9 +17,3 @@ tracing = "0.1"
 
 [features]
 default = ["nusb/tokio"]
-
-[dev-dependencies]
-anyhow = "1"
-clap = { version = "4.5", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-tracing-subscriber = "0.3"

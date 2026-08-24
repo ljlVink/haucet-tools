@@ -214,7 +214,7 @@ impl PackagePage {
     }
 
     fn partition_table(&mut self, ui: &mut egui::Ui, index: &PackageIndex) {
-        section(ui, "包内分区（勾选要解包的镜像）");
+        section(ui, "包内分区(勾选要解包的镜像)");
         ui.horizontal(|ui| {
             if ui.button("全选").clicked() {
                 for checked in &mut self.checked {
