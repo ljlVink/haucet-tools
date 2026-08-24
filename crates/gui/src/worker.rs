@@ -299,17 +299,32 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             })
         }
         JobOp::PartitionInfo { image } => {
-            let summary = partition::summarize(Path::new(image))?;
-            let label = match &summary {
-                partition::PartitionSummary::Harmony(h) => {
+            let entropy_summary = entropy::analyze_file(Path::new(image))?;
+            let partition_summary = partition::summarize(Path::new(image)).ok();
+            let label = match &partition_summary {
+                Some(partition::PartitionSummary::Harmony(h)) => {
                     format!("HARMONY! 分区镜像({})", h.cert.partition_name)
                 }
-                partition::PartitionSummary::Rvt(info) => {
+                Some(partition::PartitionSummary::Rvt(info)) => {
                     format!("RVT 密钥镜像({} 个描述符)", info.descriptors.len())
                 }
-                partition::PartitionSummary::HvbWrapped { .. } => "HVB 包装的分区镜像".to_owned(),
+                Some(partition::PartitionSummary::HvbWrapped { .. }) => {
+                    "HVB 包装的分区镜像".to_owned()
+                }
+                None => "未识别分区格式".to_owned(),
             };
-            summary_payload(label, summary)
+            summary_payload(
+                format!(
+                    "{}；信息熵 {:.6} bits/byte ({:.2}%)",
+                    label,
+                    entropy_summary.entropy_bits_per_byte,
+                    entropy_summary.normalized_percent()
+                ),
+                serde_json::json!({
+                    "partition": partition_summary,
+                    "entropy": entropy_summary,
+                }),
+            )
         }
         JobOp::FileEntropy { file } => {
             let summary = entropy::analyze_file(Path::new(file))?;

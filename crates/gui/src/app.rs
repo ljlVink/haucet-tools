@@ -295,8 +295,6 @@ impl HaucetApp {
 
     fn log_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.settings.show_log, "运行日志");
-            ui.separator();
             if ui.button("清空").clicked() {
                 self.logs.clear();
             }
@@ -311,7 +309,7 @@ impl HaucetApp {
                 self.cancel_job();
             }
         });
-        if self.settings.show_log && !self.logs.is_empty() {
+        if !self.logs.is_empty() {
             egui::ScrollArea::vertical()
                 .id_salt("job-log")
                 .max_height(170.0)

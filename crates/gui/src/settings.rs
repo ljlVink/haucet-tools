@@ -13,7 +13,6 @@ pub struct Settings {
     pub last_output: Option<String>,
     /// Recently opened files (most recent first).
     pub recent: Vec<String>,
-    pub show_log: bool,
     pub force: bool,
     pub allow_grow: bool,
     pub all_erofs: bool,
@@ -28,7 +27,6 @@ impl Default for Settings {
             last_dir: None,
             last_output: None,
             recent: Vec::new(),
-            show_log: true,
             force: false,
             allow_grow: false,
             all_erofs: false,

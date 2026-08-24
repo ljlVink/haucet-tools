@@ -138,12 +138,6 @@ impl HomePage {
                             apply_action(app, page, kind, &detection.path);
                         }
                     }
-                    if std::path::Path::new(&detection.path).is_file()
-                        && ui.button("计算信息熵").clicked()
-                    {
-                        app.partition.input = detection.path.clone();
-                        app.nav(Page::Partition);
-                    }
                     if ui.button("重新识别").clicked() {
                         self.detection =
                             Some(detect::detect(std::path::Path::new(&detection.path)));
@@ -178,7 +172,7 @@ impl HomePage {
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "分区信息 / 信息熵", Page::Partition, card_width, app);
+                quick_card(ui, "分区信息", Page::Partition, card_width, app);
                 ui.end_row();
                 quick_card(ui, "Fastboot 刷机", Page::Fastboot, card_width, app);
                 if columns == 1 {
@@ -277,7 +271,7 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
             app.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Repack;
         }
         (Page::Partition, _) => {
-            app.partition.input = path.to_owned();
+            app.partition.select_input(path.to_owned());
         }
         (Page::Cpio, _) => {
             app.cpio.source = crate::pages::cpio::CpioSource::File;

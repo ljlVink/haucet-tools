@@ -63,9 +63,6 @@ impl PackagePage {
                             layout: self.layout.spec().to_owned(),
                         });
                     }
-                    if ui.button("打开日志面板").clicked() {
-                        app.settings.show_log = true;
-                    }
                 });
 
                 ui.add_space(4.0);
