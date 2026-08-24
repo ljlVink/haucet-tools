@@ -15,6 +15,7 @@ common = { path = "../common" }
 eframe.workspace = true
 egui.workspace = true
 egui_extras = { version = "0.32", default-features = false, features = ["image"] }
+hisi-vcom = { path = "../hisi-vcom" }
 hm-fastboot = { path = "../hm-fastboot" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }

@@ -7,6 +7,7 @@ pub mod package;
 pub mod partition;
 pub mod ramdisk;
 pub mod update_bin;
+pub mod vcom;
 
 use eframe::egui;
 
@@ -19,11 +20,12 @@ pub enum Page {
     Ramdisk,
     Partition,
     Fastboot,
+    Vcom,
     Cpio,
 }
 
 impl Page {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Home,
         Self::Package,
         Self::UpdateBin,
@@ -31,6 +33,7 @@ impl Page {
         Self::Ramdisk,
         Self::Partition,
         Self::Fastboot,
+        Self::Vcom,
         Self::Cpio,
     ];
 
@@ -43,6 +46,7 @@ impl Page {
             Self::Ramdisk => "Ramdisk",
             Self::Partition => "分区信息",
             Self::Fastboot => "Fastboot 刷机",
+            Self::Vcom => "VCOM 刷机",
             Self::Cpio => "Cpio 浏览器",
         }
     }

@@ -14,6 +14,7 @@ pub(crate) struct HaucetApp {
     pub ramdisk: pages::ramdisk::RamdiskPage,
     pub partition: pages::partition::PartitionPage,
     pub fastboot: pages::fastboot::FastbootPage,
+    pub vcom: pages::vcom::VcomPage,
     pub cpio: pages::cpio::CpioPage,
 
     pub job: Option<RunningJob>,
@@ -50,6 +51,7 @@ impl HaucetApp {
             ramdisk: pages::ramdisk::RamdiskPage::default(),
             partition: pages::partition::PartitionPage::default(),
             fastboot: pages::fastboot::FastbootPage::default(),
+            vcom: pages::vcom::VcomPage::default(),
             cpio: pages::cpio::CpioPage::default(),
             job: None,
             job_owner: Page::Home,
@@ -363,6 +365,11 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.fastboot = page;
                 }
+                Page::Vcom => {
+                    let mut page = std::mem::take(&mut self.vcom);
+                    page.ui(ui, self);
+                    self.vcom = page;
+                }
                 Page::Cpio => {
                     let mut page = std::mem::take(&mut self.cpio);
                     page.ui(ui, self);
@@ -406,5 +413,7 @@ fn job_label(op: &JobOp) -> &'static str {
         FileEntropy { .. } => "计算文件信息熵",
         FastbootStatus { .. } => "检测 fastboot 设备",
         FastbootFlash { .. } => "刷写 fastboot 镜像",
+        VcomStatus { .. } => "检测 VCOM 设备",
+        VcomFlash { .. } => "刷写 VCOM loader",
     }
 }

@@ -3,6 +3,8 @@ use common::formats::update_bin::{self, UpdateLayout};
 use common::formats::{cpio, erofs, header::check_fmt};
 use common::tools::ToolPaths;
 use common::{entropy, package, partition, ramdisk};
+use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
+use hisi_vcom::vcom;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
@@ -77,6 +79,12 @@ pub enum JobOp {
     FastbootFlash {
         image: String,
         target: String,
+    },
+    VcomStatus {},
+    VcomFlash {
+        port: String,
+        address: u32,
+        file: String,
     },
 }
 
@@ -342,7 +350,74 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             ensure!(!target.trim().is_empty(), "分区名不能为空");
             fastboot_flash(Path::new(image), target.trim())
         }
+        JobOp::VcomStatus {} => vcom_status(),
+        JobOp::VcomFlash {
+            port,
+            address,
+            file,
+        } => vcom_flash(port.trim(), *address, Path::new(file)),
     }
+}
+
+fn vcom_status() -> Result<WorkerResult> {
+    let ports = transport::list_serial_ports()?
+        .into_iter()
+        .map(|port| {
+            serde_json::json!({
+                "name": port.name,
+                "description": port.description,
+            })
+        })
+        .collect::<Vec<_>>();
+    let filter = DeviceFilter {
+        vid: Some(0x12D1),
+        ..Default::default()
+    };
+    let usb = transport::list_candidates(&filter)?;
+    let serial_count = ports.len();
+    let usb_count = usb.len();
+
+    Ok(WorkerResult {
+        ok: true,
+        summary: format!("VCOM serial ports: {serial_count}, USB candidates: {usb_count}"),
+        payload: Some(serde_json::json!({
+            "ports": ports,
+            "usb": usb,
+        })),
+    })
+}
+
+fn vcom_flash(port: &str, address: u32, file: &Path) -> Result<WorkerResult> {
+    ensure!(!port.is_empty(), "VCOM port cannot be empty");
+    let data = fs::read(file).with_context(|| format!("reading {}", file.display()))?;
+    let mut device = SerialVcomDevice::open(port, 115200)
+        .with_context(|| format!("opening VCOM port {port}"))?;
+    let mut log = |message: &str| emit_log(message);
+
+    vcom::upload(
+        &mut device,
+        &data,
+        address,
+        &mut log,
+        &mut |sent, total| {
+            if total > 0 && (sent == total || sent % (total / 10 + 1) == 0) {
+                emit_log(&format!("Progress: {sent}/{total} bytes"));
+            }
+        },
+    )?;
+
+    Ok(WorkerResult {
+        ok: true,
+        summary: format!(
+            "VCOM flash finished: {} -> {port} at 0x{address:08X}",
+            file.display()
+        ),
+        payload: Some(serde_json::json!({
+            "port": port,
+            "address": format!("0x{address:08X}"),
+            "bytes": data.len(),
+        })),
+    })
 }
 
 fn fastboot_runtime() -> Result<tokio::runtime::Runtime> {

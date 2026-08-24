@@ -1,6 +1,6 @@
 use crate::app::HaucetApp;
 use crate::pages::badge_text;
-use crate::util::{human_size, message_box, mode_string, open_in_file_manager};
+use crate::util::{human_size, message_box, mode_string};
 use common::compress::decompress_vec;
 use common::formats::cpio::{self, Cpio, S_IFDIR, S_IFMT};
 use common::formats::harmony::HvbFrame;
@@ -86,16 +86,14 @@ impl Loaded {
         self.children = children;
     }
 
-    fn stats(&self) -> (usize, u64, usize) {
-        let mut total = 0_u64;
+    fn stats(&self) -> (usize, usize) {
         let mut dirs = 0_usize;
         for entry in self.cpio.entries.values() {
             if entry.mode & S_IFMT == S_IFDIR {
                 dirs += 1;
             }
-            total += entry.data.len() as u64;
         }
-        (self.cpio.entries.len(), total, dirs)
+        (self.cpio.entries.len(), dirs)
     }
 
     /// Snapshot of the archive for use in a worker thread (entries are
@@ -150,8 +148,6 @@ fn split_path(path: &str) -> (String, String) {
     }
 }
 
-/// TODO REMOVE
-/// 快速判断文件是否以 HARMONY! 头开始(ramdisk 镜像)。
 fn is_harmony_image(path: &std::path::Path) -> bool {
     use std::io::Read;
     let Ok(mut file) = std::fs::File::open(path) else {
@@ -317,7 +313,7 @@ impl CpioPage {
     }
 
     fn summary_row(&self, ui: &mut egui::Ui, loaded: &Loaded) {
-        let (count, total, dirs) = loaded.stats();
+        let (count, dirs) = loaded.stats();
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(format!(

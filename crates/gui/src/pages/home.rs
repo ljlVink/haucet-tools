@@ -178,6 +178,8 @@ impl HomePage {
                 if columns == 1 {
                     ui.end_row();
                 }
+                quick_card(ui, "VCOM 刷机", Page::Vcom, card_width, app);
+                ui.end_row();
             });
     }
 

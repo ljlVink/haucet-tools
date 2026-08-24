@@ -14,5 +14,6 @@ anyhow.workspace = true
 clap.workspace = true
 common = { path = "../common" }
 hm-fastboot = { path = "../hm-fastboot" }
+hisi-vcom = { path = "../hisi-vcom" }
 libc.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }

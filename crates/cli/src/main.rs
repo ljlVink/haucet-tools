@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod fastboot;
+mod vcom;
 
 #[derive(Debug, Parser)]
 #[command(version, about, arg_required_else_help = true)]
@@ -52,6 +53,12 @@ enum Command {
         #[command(subcommand)]
         command: FastbootCommand,
     },
+    /// Operate on a HiSilicon bootrom VCOM port
+    #[command(arg_required_else_help = true)]
+    Vcom {
+        #[command(subcommand)]
+        command: VcomCommand,
+    },
     /// Unpack, repack, patch, or inspect a ramdisk image
     #[command(arg_required_else_help = true)]
     Ramdisk {
@@ -78,6 +85,22 @@ enum FastbootCommand {
     },
     /// Reboot the device out of fastboot mode
     Reboot,
+}
+
+#[derive(Debug, Subcommand)]
+enum VcomCommand {
+    /// List available VCOM serial and USB devices
+    Devices,
+    /// Upload a loader binary to a VCOM port at an address
+    Flash {
+        /// Serial port name, for example COM3
+        port: String,
+        /// Target address, written as hexadecimal, for example 0x80000000
+        #[arg(value_parser = vcom::parse_addr)]
+        address: u32,
+        /// Loader binary to upload
+        file: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -383,6 +406,17 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
     })
 }
 
+fn run_vcom_command(command: VcomCommand) -> Result<()> {
+    match command {
+        VcomCommand::Devices => vcom::devices(),
+        VcomCommand::Flash {
+            port,
+            address,
+            file,
+        } => vcom::flash(&port, address, &file),
+    }
+}
+
 fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
     match command {
         RamdiskCommand::Unpack { image, out, force } => {
@@ -440,6 +474,7 @@ fn main() {
         Command::PartitionInfo { image } => run_partition_info_command(image),
         Command::Entropy { file } => run_entropy_command(file),
         Command::Fastboot { command } => run_fastboot_command(command),
+        Command::Vcom { command } => run_vcom_command(command),
         Command::Ramdisk { command } => run_ramdisk_command(command),
     };
 
