@@ -12,8 +12,8 @@ default-members = [
 ]
 resolver = "3"
 
-[profile.release]
-lto = true
+#[profile.release]
+#lto = true
 
 [workspace.package]
 version = "0.1.0"

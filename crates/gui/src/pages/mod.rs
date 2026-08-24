@@ -105,10 +105,19 @@ pub(crate) fn run_button(
     enabled: bool,
     hint: Option<&str>,
 ) -> egui::Response {
-    let response = ui.add_enabled(
-        enabled,
-        egui::Button::new(egui::RichText::new(text).strong()).min_size(egui::vec2(140.0, 32.0)),
-    );
+    let response = ui
+        .allocate_ui_with_layout(
+            egui::vec2(140.0, 32.0),
+            egui::Layout::centered_and_justified(egui::Direction::TopDown),
+            |ui| {
+                ui.add_enabled(
+                    enabled,
+                    egui::Button::new(egui::RichText::new(text).strong())
+                        .min_size(egui::vec2(140.0, 32.0)),
+                )
+            },
+        )
+        .inner;
     match hint {
         Some(hint) => response.on_hover_text(hint),
         None => response,

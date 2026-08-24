@@ -53,7 +53,7 @@ impl VcomPage {
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new(
-                        "HiSilicon/Huawei bootrom VCOM 刷机工具，串口参数为 115200 波特率。",
+                        "HiSilicon VCOM 刷机",
                     )
                     .weak(),
                 );
