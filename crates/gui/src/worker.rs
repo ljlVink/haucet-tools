@@ -222,10 +222,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             erofs::unpack_with_tools(Path::new(image), Path::new(output), &tools, *force)?;
             let manifest = erofs::read_manifest(Path::new(output))?;
             summary_payload(
-                format!(
-                    "EROFS 镜像已解包到 {}(分区 {})",
-                    output, manifest.partition
-                ),
+                format!("EROFS 镜像已解包到 {}(分区 {})", output, manifest.partition),
                 manifest,
             )
         }

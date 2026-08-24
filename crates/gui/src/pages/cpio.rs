@@ -339,11 +339,7 @@ impl CpioPage {
                     egui::Color32::from_rgb(90, 200, 120),
                 );
             } else if loaded.cpio.exists("init") {
-                badge_text(
-                    ui,
-                    "原厂(init 存在)",
-                    egui::Color32::from_rgb(90, 200, 120),
-                );
+                badge_text(ui, "原厂(init 存在)", egui::Color32::from_rgb(90, 200, 120));
             } else {
                 badge_text(ui, "未知布局", egui::Color32::from_rgb(230, 170, 40));
             }

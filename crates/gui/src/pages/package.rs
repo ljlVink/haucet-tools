@@ -37,7 +37,7 @@ impl PackagePage {
                     "更新包文件",
                     &mut self.input,
                     "选择文件",
-                    Some("update_full_base.zip"),
+                    Some("zip"),
                 );
 
                 let drops = app.take_drops(ui.ctx());

@@ -4,6 +4,7 @@ use crate::util::{kv, message_box, section};
 use eframe::egui;
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct FastbootDeviceInfo {
@@ -155,20 +156,25 @@ impl FastbootPage {
         section(ui, "刷写镜像");
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("镜像文件").strong());
-            ui.add(
+            let image_response = ui.add(
                 egui::TextEdit::singleline(&mut self.image)
                     .hint_text("镜像文件路径或拖放文件到这里")
                     .desired_width(ui.available_width() - 170.0),
             );
+            if image_response.changed()
+                && let Some(target) = partition_name_from_image(Path::new(self.image.trim()))
+            {
+                self.target = target;
+            }
             if ui.button("选择镜像…").clicked()
                 && let Some(path) = app.pick_file("选择镜像文件", &[("镜像文件", &["img", "bin"])])
             {
-                self.image = path.display().to_string();
+                self.set_image(&path);
             }
         });
         let drops = app.take_drops(ui.ctx());
         if let Some(path) = drops.first() {
-            self.image = path.display().to_string();
+            self.set_image(path);
         }
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -179,6 +185,7 @@ impl FastbootPage {
                     .desired_width(ui.available_width() - 170.0),
             );
         });
+        ui.label(egui::RichText::new("目标分区会根据镜像文件名自动填写，也可手动修改。").weak());
         ui.add_space(6.0);
         ui.label(
             egui::RichText::new("⚠ 刷写会覆盖设备上的分区数据, 请确认分区名和镜像正确。")
@@ -255,4 +262,29 @@ impl FastbootPage {
         self.pending = Some(PendingOp::Status);
         app.start_job(crate::worker::JobOp::FastbootStatus {});
     }
+
+    fn set_image(&mut self, path: &Path) {
+        self.image = path.display().to_string();
+        if let Some(target) = partition_name_from_image(path) {
+            self.target = target;
+        }
+    }
+}
+
+fn partition_name_from_image(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?.trim();
+    if file_name.eq_ignore_ascii_case("ptable") {
+        return Some("ptable".to_owned());
+    }
+
+    let extension = path.extension()?.to_str()?;
+    if !extension.eq_ignore_ascii_case("img") && !extension.eq_ignore_ascii_case("bin") {
+        return None;
+    }
+
+    let stem = path.file_stem()?.to_str()?.trim();
+    if stem.is_empty() {
+        return None;
+    }
+    Some(stem.to_owned())
 }

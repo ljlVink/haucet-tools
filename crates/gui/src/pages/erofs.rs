@@ -100,6 +100,10 @@ impl ErofsPage {
         }
         match common::formats::erofs::read_manifest(std::path::Path::new(&workspace)) {
             Ok(manifest) => {
+                if self.repack.output.trim().is_empty() {
+                    self.repack.output =
+                        default_repack_output(&workspace, &manifest.original_file_name);
+                }
                 self.repack.manifest_error = None;
                 self.repack.manifest_from = workspace.clone();
                 self.repack.manifest = Some(manifest);
@@ -220,17 +224,13 @@ impl ErofsPage {
                                     "无"
                                 },
                             );
-                            crate::util::kv(ui, "extract.erofs", &manifest.extract_erofs_version);
-                            crate::util::kv(ui, "mkfs.erofs", &manifest.mkfs_erofs_version);
                         });
                 });
             ui.add_space(6.0);
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "注意：重新打包不会重新签名 HVB 证书。设备安全启动(secure boot)可能拒绝新镜像, "
-                    .to_owned()
-                    + "即使文件结构完全合法。",
+                "注意：重新打包不会重新签名 HVB 证书".to_owned(),
             );
         } else if let Some(error) = &self.repack.manifest_error {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
@@ -252,7 +252,6 @@ impl ErofsPage {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.repack.allow_grow, "允许镜像超过原始大小");
-            ui.label("工具目录");
         });
         ui.add_space(8.0);
         let ready = !app.job_running()
@@ -311,4 +310,27 @@ fn default_workspace(image: &str) -> String {
     } else {
         format!("{parent}/{name}")
     }
+}
+
+fn default_repack_output(workspace: &str, original_file_name: &str) -> String {
+    let workspace = std::path::Path::new(workspace);
+    let Some(parent) = workspace
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    else {
+        return String::new();
+    };
+
+    let original = std::path::Path::new(original_file_name);
+    let Some(file_name) = original.file_name() else {
+        return String::new();
+    };
+    let mut patched_name = original.file_stem().unwrap_or(file_name).to_os_string();
+    patched_name.push("_patched");
+    if let Some(extension) = original.extension() {
+        patched_name.push(".");
+        patched_name.push(extension);
+    }
+
+    parent.join(patched_name).display().to_string()
 }
