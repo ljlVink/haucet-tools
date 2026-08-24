@@ -206,16 +206,21 @@ impl CpioPage {
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.add(
+            let path_edit = ui.add(
                 egui::TextEdit::singleline(&mut self.path)
                     .hint_text(match self.source {
                         CpioSource::File => "ramdisk.cpio 文件路径",
                         CpioSource::Image => "ramdisk 镜像路径",
                         CpioSource::Workspace => "解包工作区目录",
                     })
-                    .desired_width(ui.available_width() - 240.0),
+                    .desired_width(ui.available_width() - 120.0),
             );
-            if ui.button("选择…").clicked() {
+            let mut load_requested =
+                path_edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            if ui
+                .add_enabled(self.load_job.is_none(), egui::Button::new("选择…"))
+                .clicked()
+            {
                 let picked = match self.source {
                     CpioSource::File => app.pick_file("选择 cpio 文件", &[("cpio", &["cpio"])]),
                     CpioSource::Image => app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])]),
@@ -223,15 +228,10 @@ impl CpioPage {
                 };
                 if let Some(path) = picked {
                     self.path = path.display().to_string();
+                    load_requested = true;
                 }
             }
-            if ui
-                .add_enabled(
-                    !self.path.trim().is_empty() && self.load_job.is_none(),
-                    egui::Button::new("加载"),
-                )
-                .clicked()
-            {
+            if load_requested {
                 self.start_load(app);
             }
         });
@@ -321,10 +321,9 @@ impl CpioPage {
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new(format!(
-                    "{} 个条目 · {} 个目录 · 数据 {}",
+                    "{} 个条目 · {} 个目录 ",
                     count,
                     dirs,
-                    human_size(total)
                 ))
                 .weak(),
             );
@@ -351,13 +350,6 @@ impl CpioPage {
                 ui.separator();
                 ui.label(egui::RichText::new(&loaded.source_path).weak().monospace());
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("打开来源位置").clicked()
-                    && let Some(parent) = std::path::Path::new(&loaded.source_path).parent()
-                {
-                    open_in_file_manager(parent);
-                }
-            });
         });
         ui.add_space(4.0);
     }
