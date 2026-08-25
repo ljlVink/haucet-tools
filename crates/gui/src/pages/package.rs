@@ -1,5 +1,5 @@
 use crate::app::HaucetApp;
-use crate::pages::{LayoutChoice, Page, ResultView, layout_label, run_button};
+use crate::pages::{LayoutChoice, Page, ResultView, run_button};
 use crate::util::{human_size, message_box, open_in_file_manager, section};
 use common::formats::update_bin::PackageIndex;
 use eframe::egui;
@@ -19,11 +19,20 @@ pub struct PackagePage {
     pub checked: Vec<bool>,
     pub inspect_message: Option<String>,
     pub result: Option<ResultView>,
+    inspect_pending: bool,
+    input_initialized: bool,
 }
 
 impl PackagePage {
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         self.poll_result(app);
+
+        if !self.input_initialized {
+            self.input_initialized = true;
+            if !self.input.trim().is_empty() {
+                self.inspect_pending = true;
+            }
+        }
 
         egui::ScrollArea::vertical()
             .id_salt("package-scroll")
@@ -31,14 +40,23 @@ impl PackagePage {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_space(6.0);
-                path_row(
+                let input_selected = path_row(
                     ui,
                     app,
-                    "更新包文件",
+                    "更新文件",
                     &mut self.input,
                     "选择文件",
                     Some("zip"),
                 );
+                if input_selected {
+                    if self.output.trim().is_empty() {
+                        self.output = default_output(&self.input);
+                    }
+                    self.inspect_pending = true;
+                }
+                ui.add_space(6.0);
+
+                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
 
                 let drops = app.take_drops(ui.ctx());
                 if let Some(path) = drops.first() {
@@ -46,26 +64,37 @@ impl PackagePage {
                     if self.output.trim().is_empty() {
                         self.output = default_output(&self.input);
                     }
+                    self.inspect_pending = true;
+                }
+
+                if self.inspect_pending && !app.job_running() && !self.input.trim().is_empty() {
+                    self.start_inspect(app);
                 }
 
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if run_button(
-                        ui,
-                        "读取包内容",
-                        !app.job_running() && !self.input.trim().is_empty(),
-                        Some("解析包内的 update.bin 组件表, 无需解包"),
-                    )
-                    .clicked()
-                    {
-                        app.start_job(crate::worker::JobOp::PackageInspect {
+                    let ready = !app.job_running()
+                        && !self.input.trim().is_empty()
+                        && !self.output.trim().is_empty();
+                    if run_button(ui, "开始解包", ready, None).clicked() {
+                        let partitions = self.selected_partitions();
+                        app.start_job(crate::worker::JobOp::PackageUnpack {
                             input: self.input.trim().to_owned(),
+                            output: self.output.trim().to_owned(),
+                            partitions,
+                            all_erofs: self.all_erofs,
                             layout: self.layout.spec().to_owned(),
+                            force: self.force,
+                            tools_dir: optional(&self.tools_dir),
                         });
+                    }
+                    if app.job_running() {
+                        ui.label(egui::RichText::new("任务进行中…").weak());
                     }
                 });
 
                 ui.add_space(4.0);
+                let layout_before = self.layout;
                 egui::CollapsingHeader::new("高级选项")
                     .id_salt("package-advanced")
                     .show(ui, |ui| {
@@ -104,11 +133,12 @@ impl PackagePage {
                             });
                     });
 
-                ui.add_space(10.0);
-                section(ui, "输出");
-                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
+                if self.layout != layout_before && !self.input.trim().is_empty() {
+                    self.inspect_pending = true;
+                }
 
                 ui.add_space(8.0);
+                self.show_result(ui);
                 if let Some(message) = &self.inspect_message {
                     message_box(ui, egui::Color32::from_rgb(90, 170, 255), message);
                     ui.add_space(6.0);
@@ -116,31 +146,20 @@ impl PackagePage {
                 if let Some(index) = self.index.clone() {
                     self.partition_table(ui, &index);
                 }
-
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    let ready = !app.job_running()
-                        && !self.input.trim().is_empty()
-                        && !self.output.trim().is_empty();
-                    if run_button(ui, "开始解包", ready, None).clicked() {
-                        let partitions = self.selected_partitions();
-                        app.start_job(crate::worker::JobOp::PackageUnpack {
-                            input: self.input.trim().to_owned(),
-                            output: self.output.trim().to_owned(),
-                            partitions,
-                            all_erofs: self.all_erofs,
-                            layout: self.layout.spec().to_owned(),
-                            force: self.force,
-                            tools_dir: optional(&self.tools_dir),
-                        });
-                    }
-                    if app.job_running() {
-                        ui.label(egui::RichText::new("任务进行中…").weak());
-                    }
-                });
-                ui.add_space(10.0);
-                self.show_result(ui);
             });
+    }
+
+    fn start_inspect(&mut self, app: &mut HaucetApp) {
+        if app.start_job(crate::worker::JobOp::PackageInspect {
+            input: self.input.trim().to_owned(),
+            layout: self.layout.spec().to_owned(),
+        }) {
+            self.inspect_pending = false;
+            self.index = None;
+            self.checked.clear();
+            self.inspect_message = None;
+            self.result = None;
+        }
     }
 
     fn poll_result(&mut self, app: &mut HaucetApp) {
@@ -211,7 +230,7 @@ impl PackagePage {
     }
 
     fn partition_table(&mut self, ui: &mut egui::Ui, index: &PackageIndex) {
-        section(ui, "包内分区(勾选要解包的镜像)");
+        section(ui, "包内分区");
         ui.horizontal(|ui| {
             if ui.button("全选").clicked() {
                 for checked in &mut self.checked {
@@ -223,14 +242,6 @@ impl PackagePage {
                     *checked = false;
                 }
             }
-            ui.label(
-                egui::RichText::new(format!(
-                    "布局 {} · 数据偏移 {}",
-                    layout_label(&index.layout),
-                    crate::util::hex64(index.data_offset)
-                ))
-                .weak(),
-            );
         });
         ui.add_space(4.0);
         let components = &index.components;
@@ -315,7 +326,8 @@ fn path_row(
     value: &mut String,
     button: &str,
     filter: Option<&str>,
-) {
+) -> bool {
+    let mut changed = false;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).strong());
         ui.add(
@@ -335,9 +347,11 @@ fn path_row(
             };
             if let Some(path) = picked {
                 *value = path.display().to_string();
+                changed = true;
             }
         }
     });
+    changed
 }
 
 fn component_type_label(component_type: u8) -> String {
