@@ -58,7 +58,7 @@ impl FastbootPage {
                 ui.add_space(6.0);
                 ui.label(
                     egui::RichText::new(
-                        "将设备进入 fastboot 模式并用 USB 连接, 检测连接状态后可直接刷写镜像。",
+                        "HarmonyOS/Android Fastboot 刷机",
                     )
                     .weak(),
                 );
@@ -72,7 +72,7 @@ impl FastbootPage {
     }
 
     fn status_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "设备连接");
+        section(ui, "Fastboot 设备");
         ui.horizontal(|ui| {
             if run_button(
                 ui,
@@ -185,8 +185,7 @@ impl FastbootPage {
                     .desired_width(ui.available_width() - 170.0),
             );
         });
-        ui.label(egui::RichText::new("目标分区会根据镜像文件名自动填写，也可手动修改。").weak());
-        ui.add_space(6.0);
+
         ui.label(
             egui::RichText::new("⚠ 刷写会覆盖设备上的分区数据, 请确认分区名和镜像正确。")
                 .color(egui::Color32::from_rgb(230, 170, 40)),

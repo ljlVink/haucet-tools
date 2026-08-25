@@ -70,7 +70,7 @@ impl VcomPage {
         ui.horizontal(|ui| {
             if run_button(
                 ui,
-                "刷新设备",
+                "检测设备连接",
                 !app.job_running(),
                 Some("枚举串口和 Huawei USB VCOM 设备"),
             )
@@ -185,7 +185,7 @@ impl VcomPage {
                     .hint_text("Loader 文件路径")
                     .desired_width(ui.available_width() - 170.0),
             );
-            if ui.button("选择...").clicked()
+            if ui.button("选择文件").clicked()
                 && let Some(path) = app.pick_file("选择 VCOM Loader", &[])
             {
                 self.set_file(&path);
