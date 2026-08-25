@@ -6,7 +6,6 @@ pub mod home;
 pub mod package;
 pub mod partition;
 pub mod ramdisk;
-pub mod update_bin;
 pub mod vcom;
 
 use eframe::egui;
@@ -15,7 +14,6 @@ use eframe::egui;
 pub enum Page {
     Home,
     Package,
-    UpdateBin,
     Erofs,
     Ramdisk,
     Partition,
@@ -25,10 +23,9 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 8] = [
         Self::Home,
         Self::Package,
-        Self::UpdateBin,
         Self::Erofs,
         Self::Ramdisk,
         Self::Partition,
@@ -41,7 +38,6 @@ impl Page {
         match self {
             Self::Home => "快速开始",
             Self::Package => "更新包解包",
-            Self::UpdateBin => "update.bin",
             Self::Erofs => "EROFS 镜像",
             Self::Ramdisk => "Ramdisk",
             Self::Partition => "分区信息",
@@ -85,14 +81,6 @@ pub struct ResultView {
     pub ok: bool,
     pub summary: String,
     pub output: String,
-}
-
-pub fn layout_label(layout: &common::formats::update_bin::UpdateLayout) -> &'static str {
-    match layout {
-        common::formats::update_bin::UpdateLayout::Auto => "自动检测",
-        common::formats::update_bin::UpdateLayout::L1 => "L1",
-        common::formats::update_bin::UpdateLayout::L2 => "L2",
-    }
 }
 
 pub fn badge_text(ui: &mut egui::Ui, text: &str, color: egui::Color32) {

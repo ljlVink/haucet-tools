@@ -1,7 +1,7 @@
 use crate::app::HaucetApp;
 use crate::pages::{LayoutChoice, Page, ResultView, run_button};
 use crate::util::{human_size, message_box, open_in_file_manager, section};
-use common::formats::update_bin::PackageIndex;
+use common::package::PackageIndex;
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
 
@@ -46,7 +46,7 @@ impl PackagePage {
                     "更新文件",
                     &mut self.input,
                     "选择文件",
-                    Some("zip"),
+                    Some(&["zip", "bin"]),
                 );
                 if input_selected {
                     if self.output.trim().is_empty() {
@@ -325,7 +325,7 @@ fn path_row(
     label: &str,
     value: &mut String,
     button: &str,
-    filter: Option<&str>,
+    filter: Option<&[&str]>,
 ) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
@@ -337,7 +337,7 @@ fn path_row(
         );
         if ui.button(button).clicked() {
             let filters: &[(&str, &[&str])] = match filter {
-                Some(ext) => &[("文件", &[ext])],
+                Some(extensions) => &[("更新包", extensions)],
                 None => &[],
             };
             let picked = if filter.is_some() {

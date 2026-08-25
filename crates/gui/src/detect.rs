@@ -17,8 +17,6 @@ pub enum FileKind {
     Unknown,
     /// update_full_base.zip 之类的 ZIP 更新包
     ZipPackage,
-    /// update.bin 组件包
-    UpdateBin,
     /// EROFS 分区镜像
     Erofs,
     /// HARMONY! 头(ramdisk 或分区镜像)
@@ -40,7 +38,6 @@ impl FileKind {
         match self {
             Self::Unknown => "未知格式",
             Self::ZipPackage => "ZIP 更新包",
-            Self::UpdateBin => "update.bin",
             Self::Erofs => "EROFS 分区镜像",
             Self::HarmonyFrame => "HARMONY! 镜像",
             Self::Rvt => "RVT 密钥镜像",
@@ -106,6 +103,7 @@ fn detect_dir(path: &Path) -> (FileKind, String) {
     }
 }
 
+//todo use local funcs, rather than judge itself.
 fn detect_file(path: &Path) -> (FileKind, String) {
     let Ok(mut file) = File::open(path) else {
         return (FileKind::Unknown, "无法打开文件".to_owned());
@@ -136,7 +134,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
             && length as usize >= 180 + compinfo_len + 16
         {
             return (
-                FileKind::UpdateBin,
+                FileKind::ZipPackage,
                 format!(
                     "update.bin 组件包({} 个分区), 可以查看和解包分区",
                     compinfo_len / 71

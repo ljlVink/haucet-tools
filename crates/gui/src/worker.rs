@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, ensure};
-use common::formats::update_bin::{self, UpdateLayout};
 use common::formats::{cpio, erofs, header::check_fmt};
+use common::package::UpdateLayout;
 use common::tools::ToolPaths;
 use common::{entropy, package, partition, ramdisk};
 use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
@@ -175,7 +175,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         JobOp::UpdateList { input, layout } => {
             let file = fs::File::open(input).with_context(|| format!("打开 {}", input))?;
             let length = file.metadata()?.len();
-            let index = update_bin::read_index(
+            let index = package::read_index(
                 &mut std::io::BufReader::new(file),
                 Some(length),
                 parse_layout(layout)?,
@@ -197,7 +197,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             selected,
         } => {
             let count = if selected.is_empty() {
-                update_bin::unpack_file(
+                package::unpack_file(
                     Path::new(input),
                     Path::new(output),
                     parse_layout(layout)?,
@@ -205,7 +205,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 )?
                 .len()
             } else {
-                update_bin::unpack_selected_file(
+                package::unpack_selected_file(
                     Path::new(input),
                     Path::new(output),
                     selected,

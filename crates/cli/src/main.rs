@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, ensure};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
-use common::formats::update_bin::{self, UpdateLayout};
+use common::package::UpdateLayout;
 use common::{entropy, formats::erofs, package, ramdisk};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,12 +21,6 @@ enum Command {
     /// Unpack an update package into a workspace directory
     #[command(arg_required_else_help = true)]
     Unpack(FullUnpackArgs),
-    /// List or unpack an update.bin file
-    #[command(arg_required_else_help = true)]
-    UpdateBin {
-        #[command(subcommand)]
-        command: UpdateBinCommand,
-    },
     /// Unpack or repack an EROFS image
     #[command(arg_required_else_help = true)]
     Erofs {
@@ -263,20 +257,6 @@ fn run_unpack_command(args: FullUnpackArgs) -> Result<()> {
     Ok(())
 }
 
-fn run_update_bin_command(command: UpdateBinCommand) -> Result<()> {
-    match command {
-        UpdateBinCommand::List { input, layout } => update_bin::list_file(&input, layout),
-        UpdateBinCommand::Unpack {
-            input,
-            out,
-            layout,
-            force,
-        } => {
-            update_bin::unpack_file(&input, &out, layout, force)?;
-            Ok(())
-        }
-    }
-}
 
 fn run_erofs_command(command: ErofsCommand) -> Result<()> {
     match command {
@@ -468,7 +448,6 @@ fn parse_update_layout(value: &str) -> std::result::Result<UpdateLayout, String>
 fn main() {
     let result = match Cli::parse().command {
         Command::Unpack(args) => run_unpack_command(args),
-        Command::UpdateBin { command } => run_update_bin_command(command),
         Command::Erofs { command } => run_erofs_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::PartitionInfo { image } => run_partition_info_command(image),

@@ -11,7 +11,7 @@ Rust tools for Huawei/HarmonyOS `update_full_base.zip`, `update.bin`, EROFS part
 ## Examples
 
 ```sh
-haucet-tools update-bin unpack update.bin --out images
+haucet-tools unpack update.bin --out images
 haucet-tools unpack update_full_base.zip --out work
 haucet-tools unpack update_full_base.zip --out work --partition system --partition vendor
 haucet-tools unpack update_full_base.zip --out work --all-erofs

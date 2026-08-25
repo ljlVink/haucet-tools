@@ -9,7 +9,6 @@ pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
     pub package: pages::package::PackagePage,
-    pub update_bin: pages::update_bin::UpdateBinPage,
     pub erofs: pages::erofs::ErofsPage,
     pub ramdisk: pages::ramdisk::RamdiskPage,
     pub partition: pages::partition::PartitionPage,
@@ -46,7 +45,6 @@ impl HaucetApp {
             current: Page::Home,
             home: pages::home::HomePage::default(),
             package: pages::package::PackagePage::default(),
-            update_bin: pages::update_bin::UpdateBinPage::default(),
             erofs: pages::erofs::ErofsPage::default(),
             ramdisk: pages::ramdisk::RamdiskPage::default(),
             partition: pages::partition::PartitionPage::default(),
@@ -339,11 +337,6 @@ impl HaucetApp {
                     let mut page = std::mem::take(&mut self.package);
                     page.ui(ui, self);
                     self.package = page;
-                }
-                Page::UpdateBin => {
-                    let mut page = std::mem::take(&mut self.update_bin);
-                    page.ui(ui, self);
-                    self.update_bin = page;
                 }
                 Page::Erofs => {
                     let mut page = std::mem::take(&mut self.erofs);

@@ -220,10 +220,6 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
             ("解包更新包", Page::Package, ActionKind::Input),
             ("查看包内组件", Page::Package, ActionKind::Input),
         ],
-        FileKind::UpdateBin => vec![
-            ("查看组件列表", Page::UpdateBin, ActionKind::Input),
-            ("解包全部组件", Page::UpdateBin, ActionKind::Input),
-        ],
         FileKind::Erofs => vec![
             ("解包 EROFS", Page::Erofs, ActionKind::Input),
             ("查看分区信息", Page::Partition, ActionKind::Input),
@@ -248,9 +244,6 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
             if app.package.output.trim().is_empty() {
                 app.package.output = default_output_for(&app.package.input, "package-work");
             }
-        }
-        (Page::UpdateBin, _) => {
-            app.update_bin.input = path.to_owned();
         }
         (Page::Erofs, ActionKind::Input) => {
             app.erofs.unpack.image = path.to_owned();

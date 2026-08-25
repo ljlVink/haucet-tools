@@ -1,7 +1,7 @@
 use crate::app::HaucetApp;
 use crate::pages::{LayoutChoice, Page, ResultView, layout_label, run_button};
 use crate::util::{human_size, message_box, open_in_file_manager, section};
-use common::formats::update_bin::PackageIndex;
+use common::package::PackageIndex;
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
 
