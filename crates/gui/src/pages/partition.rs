@@ -40,12 +40,7 @@ impl PartitionPage {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new(
-                        "查看分区信息和Shannon熵",
-                    )
-                    .weak(),
-                );
+                ui.label(egui::RichText::new("查看分区信息和Shannon熵").weak());
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("镜像文件").strong());

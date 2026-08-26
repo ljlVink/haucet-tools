@@ -56,12 +56,7 @@ impl FastbootPage {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new(
-                        "HarmonyOS/Android Fastboot 刷机",
-                    )
-                    .weak(),
-                );
+                ui.label(egui::RichText::new("HarmonyOS/Android Fastboot 刷机").weak());
                 ui.add_space(6.0);
 
                 self.status_section(ui, app);

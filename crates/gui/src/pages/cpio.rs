@@ -315,14 +315,7 @@ impl CpioPage {
     fn summary_row(&self, ui: &mut egui::Ui, loaded: &Loaded) {
         let (count, dirs) = loaded.stats();
         ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(format!(
-                    "{} 个条目 · {} 个目录 ",
-                    count,
-                    dirs,
-                ))
-                .weak(),
-            );
+            ui.label(egui::RichText::new(format!("{} 个条目 · {} 个目录 ", count, dirs,)).weak());
             ui.separator();
             ui.label(egui::RichText::new("补丁状态").weak());
             if loaded.cpio.exists(".backup/init_early") {
