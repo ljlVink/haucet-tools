@@ -76,6 +76,7 @@ pub enum JobOp {
         file: String,
     },
     FastbootStatus {},
+    FastbootReboot {},
     FastbootFlash {
         image: String,
         target: String,
@@ -346,6 +347,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             )
         }
         JobOp::FastbootStatus {} => fastboot_status(),
+        JobOp::FastbootReboot {} => fastboot_reboot(),
         JobOp::FastbootFlash { image, target } => {
             ensure!(!target.trim().is_empty(), "分区名不能为空");
             fastboot_flash(Path::new(image), target.trim())
@@ -493,6 +495,30 @@ fn fastboot_status() -> Result<WorkerResult> {
                 "devices": list,
                 "vars": vars,
             })),
+        })
+    })
+}
+
+fn fastboot_reboot() -> Result<WorkerResult> {
+    let runtime = fastboot_runtime()?;
+    runtime.block_on(async {
+        use hm_fastboot::nusb::NusbFastBoot;
+
+        let mut devices = hm_fastboot::nusb::devices()
+            .await
+            .context("枚举 USB 设备失败")?;
+        let info = devices.next().ok_or_else(|| {
+            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
+        })?;
+        let mut fb = NusbFastBoot::from_info(&info)
+            .await
+            .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
+        fb.reboot().await.context("发送 fastboot 重启命令失败")?;
+
+        Ok(WorkerResult {
+            ok: true,
+            summary: "已发送设备重启命令".to_owned(),
+            payload: None,
         })
     })
 }

@@ -28,6 +28,7 @@ pub struct FastbootStatusPayload {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingOp {
     Status,
+    Reboot,
     Flash,
 }
 
@@ -39,6 +40,7 @@ pub struct FastbootPage {
     pub image: String,
     pub target: String,
     pub result: Option<ResultView>,
+    pub reboot_result: Option<ResultView>,
     pending: Option<PendingOp>,
 }
 
@@ -79,12 +81,37 @@ impl FastbootPage {
             {
                 self.start_status(app);
             }
+            if run_button(
+                ui,
+                "重启设备",
+                !app.job_running(),
+                Some("向已连接的 fastboot 设备发送 reboot 命令"),
+            )
+            .clicked()
+            {
+                self.start_reboot(app);
+            }
             if app.job_running() {
                 ui.add(egui::Spinner::new().size(16.0));
-                ui.label(egui::RichText::new("正在检测…").weak());
+                let text = match self.pending {
+                    Some(PendingOp::Status) => "正在检测…",
+                    Some(PendingOp::Reboot) => "正在重启…",
+                    Some(PendingOp::Flash) | None => "任务运行中…",
+                };
+                ui.label(egui::RichText::new(text).weak());
             }
         });
         ui.add_space(6.0);
+
+        if let Some(result) = &self.reboot_result {
+            let color = if result.ok {
+                egui::Color32::from_rgb(90, 200, 120)
+            } else {
+                egui::Color32::from_rgb(230, 90, 90)
+            };
+            message_box(ui, color, &result.summary);
+            ui.add_space(6.0);
+        }
 
         if let Some(error) = &self.status_error {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
@@ -241,6 +268,17 @@ impl FastbootPage {
                     }
                 }
             }
+            PendingOp::Reboot => {
+                self.reboot_result = Some(ResultView {
+                    ok: result.ok,
+                    summary: result.summary,
+                    output: String::new(),
+                });
+                if result.ok {
+                    self.status = None;
+                    self.status_error = None;
+                }
+            }
             PendingOp::Flash => {
                 self.result = Some(ResultView {
                     ok: result.ok,
@@ -253,8 +291,15 @@ impl FastbootPage {
 
     fn start_status(&mut self, app: &mut HaucetApp) {
         self.status_error = None;
+        self.reboot_result = None;
         self.pending = Some(PendingOp::Status);
         app.start_job(crate::worker::JobOp::FastbootStatus {});
+    }
+
+    fn start_reboot(&mut self, app: &mut HaucetApp) {
+        self.reboot_result = None;
+        self.pending = Some(PendingOp::Reboot);
+        app.start_job(crate::worker::JobOp::FastbootReboot {});
     }
 
     fn set_image(&mut self, path: &Path) {

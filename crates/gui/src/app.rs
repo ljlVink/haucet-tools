@@ -437,6 +437,7 @@ fn job_label(op: &JobOp) -> &'static str {
         PartitionInfo { .. } => "读取分区信息",
         FileEntropy { .. } => "计算文件信息熵",
         FastbootStatus { .. } => "检测 fastboot 设备",
+        FastbootReboot { .. } => "重启 fastboot 设备",
         FastbootFlash { .. } => "刷写 fastboot 镜像",
         VcomStatus { .. } => "检测 VCOM 设备",
         VcomFlash { .. } => "刷写 VCOM loader",
