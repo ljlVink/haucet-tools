@@ -3,6 +3,7 @@ use crate::formats::erofs;
 use crate::formats::harmony::HARMONY_MAGIC;
 use crate::formats::header::{FileFormat, check_fmt};
 use crate::fs_util;
+use crate::process::CommandWindow;
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -520,7 +521,16 @@ pub fn unpack_full(
     force: bool,
 ) -> Result<()> {
     let tools = ToolPaths::discover(None)?;
-    unpack_full_with_tools(input, out, &tools, partitions, all_erofs, layout, force)
+    unpack_full_with_tools_window(
+        input,
+        out,
+        &tools,
+        partitions,
+        all_erofs,
+        layout,
+        force,
+        CommandWindow::Inherit,
+    )
 }
 
 pub fn unpack_full_with_tools(
@@ -531,6 +541,28 @@ pub fn unpack_full_with_tools(
     all_erofs: bool,
     layout: UpdateLayout,
     force: bool,
+) -> Result<()> {
+    unpack_full_with_tools_window(
+        input,
+        out,
+        tools,
+        partitions,
+        all_erofs,
+        layout,
+        force,
+        CommandWindow::Hidden,
+    )
+}
+
+fn unpack_full_with_tools_window(
+    input: &Path,
+    out: &Path,
+    tools: &ToolPaths,
+    partitions: &[String],
+    all_erofs: bool,
+    layout: UpdateLayout,
+    force: bool,
+    window: CommandWindow,
 ) -> Result<()> {
     prepare_output(out, force)?;
     let package_dir = out.join("package");
@@ -598,7 +630,7 @@ pub fn unpack_full_with_tools(
         let image = images_dir.join(&component.output_name);
         if erofs::is_erofs(&image)? {
             let workspace = partitions_dir.join(&component.name);
-            erofs::unpack_with_tools(&image, &workspace, tools, force)?;
+            erofs::unpack_with_tools_window(&image, &workspace, tools, force, window)?;
             unpacked_erofs.push(component.name.clone());
         } else if is_harmony_ramdisk(&image)? {
             let workspace = partitions_dir.join(&component.name);

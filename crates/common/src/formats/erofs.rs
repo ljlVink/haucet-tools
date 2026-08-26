@@ -1,6 +1,6 @@
 use super::hvb::{HvbFooter, HvbWrapper};
 use crate::fs_util;
-use crate::process::hide_command_window;
+use crate::process::{CommandWindow, configure_command_window};
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -52,10 +52,20 @@ pub fn is_erofs(path: &Path) -> Result<bool> {
 
 pub fn unpack(image: &Path, out: &Path, force: bool) -> Result<()> {
     let tools = ToolPaths::discover(None)?;
-    unpack_with_tools(image, out, &tools, force)
+    unpack_with_tools_window(image, out, &tools, force, CommandWindow::Inherit)
 }
 
 pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Result<()> {
+    unpack_with_tools_window(image, out, tools, force, CommandWindow::Hidden)
+}
+
+pub(crate) fn unpack_with_tools_window(
+    image: &Path,
+    out: &Path,
+    tools: &ToolPaths,
+    force: bool,
+    window: CommandWindow,
+) -> Result<()> {
     ensure!(
         is_erofs(image)?,
         "{} is not an EROFS image",
@@ -72,6 +82,7 @@ pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: boo
             .arg("-o")
             .arg(out),
         "extract.erofs",
+        window,
     )?;
 
     let extracted_source_dir = find_source_dir(out)?;
@@ -122,8 +133,8 @@ pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: boo
         source_dir: relative_string(out, &source_dir)?,
         config_dir: relative_string(out, &config_dir)?,
         fs_options_file: relative_string(out, &fs_options)?,
-        extract_erofs_version: tool_version(&tools.extract_erofs),
-        mkfs_erofs_version: tool_version(&tools.mkfs_erofs),
+        extract_erofs_version: tool_version(&tools.extract_erofs, window),
+        mkfs_erofs_version: tool_version(&tools.mkfs_erofs, window),
         hvb,
     };
     write_manifest(out, &manifest)?;
@@ -133,7 +144,13 @@ pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: boo
 
 pub fn repack(workspace: &Path, output: &Path, allow_grow: bool) -> Result<()> {
     let tools = ToolPaths::discover(None)?;
-    repack_with_tools(workspace, output, &tools, allow_grow)
+    repack_with_tools_window(
+        workspace,
+        output,
+        &tools,
+        allow_grow,
+        CommandWindow::Inherit,
+    )
 }
 
 pub fn repack_with_tools(
@@ -141,6 +158,16 @@ pub fn repack_with_tools(
     output: &Path,
     tools: &ToolPaths,
     allow_grow: bool,
+) -> Result<()> {
+    repack_with_tools_window(workspace, output, tools, allow_grow, CommandWindow::Hidden)
+}
+
+fn repack_with_tools_window(
+    workspace: &Path,
+    output: &Path,
+    tools: &ToolPaths,
+    allow_grow: bool,
+    window: CommandWindow,
 ) -> Result<()> {
     ensure!(
         !output.exists(),
@@ -191,7 +218,7 @@ pub fn repack_with_tools(
             .args(&preserved)
             .arg(&raw_path)
             .arg(&source_dir);
-        run_status(&mut command, "mkfs.erofs")?;
+        run_status(&mut command, "mkfs.erofs", window)?;
         ensure!(is_erofs(&raw_path)?, "mkfs.erofs produced an invalid image");
 
         let raw_size = fs::metadata(&raw_path)?.len();
@@ -229,7 +256,7 @@ pub fn repack_with_tools(
         }
 
         ensure!(is_erofs(&wrapped_path)?, "wrapped output is not EROFS");
-        validate_with_extractor(&wrapped_path, workspace, tools)?;
+        validate_with_extractor(&wrapped_path, workspace, tools, window)?;
         fs::rename(&wrapped_path, output)
             .with_context(|| format!("moving rebuilt image to {}", output.display()))?;
         Ok(())
@@ -394,7 +421,12 @@ fn flag_option(option: &str) -> bool {
     )
 }
 
-fn validate_with_extractor(image: &Path, workspace: &Path, tools: &ToolPaths) -> Result<()> {
+fn validate_with_extractor(
+    image: &Path,
+    workspace: &Path,
+    tools: &ToolPaths,
+    window: CommandWindow,
+) -> Result<()> {
     let validation = workspace.join(".haucet-validation");
     if validation.exists() {
         fs::remove_dir_all(&validation)?;
@@ -410,7 +442,7 @@ fn validate_with_extractor(image: &Path, workspace: &Path, tools: &ToolPaths) ->
         .arg(&validation)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    hide_command_window(&mut command);
+    configure_command_window(&mut command, window);
     let status = command
         .status()
         .context("running extract.erofs validation")?;
@@ -432,8 +464,8 @@ fn copy_raw_partition(source: &Path, destination: &Path, final_size: u64) -> Res
     Ok(())
 }
 
-fn run_status(command: &mut Command, name: &str) -> Result<()> {
-    hide_command_window(command);
+fn run_status(command: &mut Command, name: &str, window: CommandWindow) -> Result<()> {
+    configure_command_window(command, window);
     let status = command
         .status()
         .with_context(|| format!("running {name}"))?;
@@ -455,10 +487,10 @@ fn sha256_file(path: &Path) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn tool_version(tool: &Path) -> String {
+fn tool_version(tool: &Path, window: CommandWindow) -> String {
     let mut command = Command::new(tool);
     command.arg("--version");
-    hide_command_window(&mut command);
+    configure_command_window(&mut command, window);
     command
         .output()
         .map(|output| {
