@@ -1,4 +1,5 @@
 use crate::job::{self, JobEvent, JobResult, RunningJob};
+use crate::pages::images::ImageKind;
 use crate::pages::{self, Page};
 use crate::settings::Settings;
 use crate::worker::JobOp;
@@ -9,20 +10,24 @@ pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
     pub package: pages::package::PackagePage,
-    pub erofs: pages::erofs::ErofsPage,
-    pub ramdisk: pages::ramdisk::RamdiskPage,
-    pub partition: pages::partition::PartitionPage,
+    pub images: pages::images::ImagesPage,
     pub fastboot: pages::fastboot::FastbootPage,
     pub vcom: pages::vcom::VcomPage,
     pub cpio: pages::cpio::CpioPage,
 
     pub job: Option<RunningJob>,
-    pub job_owner: Page,
+    job_owner: ResultOwner,
     pub logs: Vec<String>,
     pub settings: Settings,
     pub font_loaded: bool,
     pub logo: Option<egui::TextureHandle>,
-    pub last_result: Option<(Page, JobResult)>,
+    last_result: Option<(ResultOwner, JobResult)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResultOwner {
+    Page(Page),
+    Image(ImageKind),
 }
 
 impl HaucetApp {
@@ -45,14 +50,12 @@ impl HaucetApp {
             current: Page::Home,
             home: pages::home::HomePage::default(),
             package: pages::package::PackagePage::default(),
-            erofs: pages::erofs::ErofsPage::default(),
-            ramdisk: pages::ramdisk::RamdiskPage::default(),
-            partition: pages::partition::PartitionPage::default(),
+            images: pages::images::ImagesPage::default(),
             fastboot: pages::fastboot::FastbootPage::default(),
             vcom: pages::vcom::VcomPage::default(),
             cpio: pages::cpio::CpioPage::default(),
             job: None,
-            job_owner: Page::Home,
+            job_owner: ResultOwner::Page(Page::Home),
             logs: Vec::new(),
             settings: Settings::load(),
             font_loaded,
@@ -143,10 +146,11 @@ impl HaucetApp {
         if self.job.is_some() {
             return false;
         }
+        let owner = result_owner(&op, self.current);
         match job::start(op) {
             Ok(running) => {
                 let label = job_label(&running.op);
-                self.job_owner = self.current;
+                self.job_owner = owner;
                 self.push_log(format!("── 开始任务：{label}"));
                 self.job = Some(running);
                 self.last_result = None;
@@ -155,7 +159,7 @@ impl HaucetApp {
             Err(error) => {
                 self.push_log(format!("[错误] 无法启动任务：{error:#}"));
                 self.last_result = Some((
-                    self.current,
+                    owner,
                     JobResult {
                         ok: false,
                         cancelled: false,
@@ -176,7 +180,18 @@ impl HaucetApp {
 
     pub fn take_result(&mut self, page: Page) -> Option<JobResult> {
         match &self.last_result {
-            Some((owner, _)) if *owner == page => self.last_result.take().map(|(_, r)| r),
+            Some((ResultOwner::Page(owner), _)) if *owner == page => {
+                self.last_result.take().map(|(_, result)| result)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn take_image_result(&mut self, kind: ImageKind) -> Option<JobResult> {
+        match &self.last_result {
+            Some((ResultOwner::Image(owner), _)) if *owner == kind => {
+                self.last_result.take().map(|(_, result)| result)
+            }
             _ => None,
         }
     }
@@ -267,13 +282,20 @@ impl HaucetApp {
 
     fn nav_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_space(8.0);
-        for page in Page::ALL {
-            let selected = self.current == page;
-            let response = ui.add_sized(
-                [ui.available_width(), 34.0],
-                egui::Button::selectable(selected, egui::RichText::new(page.title()).size(15.0)),
-            );
-            if response.clicked() {
+        if nav_button(ui, self.current, Page::Home) {
+            self.nav(Page::Home);
+        }
+
+        nav_group_label(ui, "文件与镜像");
+        for page in [Page::Package, Page::Images, Page::Cpio] {
+            if nav_button(ui, self.current, page) {
+                self.nav(page);
+            }
+        }
+
+        nav_group_label(ui, "设备与刷写");
+        for page in [Page::Fastboot, Page::Vcom] {
+            if nav_button(ui, self.current, page) {
                 self.nav(page);
             }
         }
@@ -338,20 +360,10 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.package = page;
                 }
-                Page::Erofs => {
-                    let mut page = std::mem::take(&mut self.erofs);
+                Page::Images => {
+                    let mut page = std::mem::take(&mut self.images);
                     page.ui(ui, self);
-                    self.erofs = page;
-                }
-                Page::Ramdisk => {
-                    let mut page = std::mem::take(&mut self.ramdisk);
-                    page.ui(ui, self);
-                    self.ramdisk = page;
-                }
-                Page::Partition => {
-                    let mut page = std::mem::take(&mut self.partition);
-                    page.ui(ui, self);
-                    self.partition = page;
+                    self.images = page;
                 }
                 Page::Fastboot => {
                     let mut page = std::mem::take(&mut self.fastboot);
@@ -371,6 +383,26 @@ impl HaucetApp {
             }
         });
     }
+}
+
+fn nav_group_label(ui: &mut egui::Ui, label: &str) {
+    ui.add_space(12.0);
+    ui.horizontal(|ui| {
+        ui.add_space(10.0);
+        ui.label(egui::RichText::new(label).weak().size(12.0));
+    });
+    ui.add_space(3.0);
+}
+
+fn nav_button(ui: &mut egui::Ui, current: Page, page: Page) -> bool {
+    ui.add_sized(
+        [ui.available_width(), 34.0],
+        egui::Button::selectable(
+            current == page,
+            egui::RichText::new(page.title()).size(15.0),
+        ),
+    )
+    .clicked()
 }
 
 fn apply_content_text_style(ui: &mut egui::Ui) {
@@ -408,5 +440,19 @@ fn job_label(op: &JobOp) -> &'static str {
         FastbootFlash { .. } => "刷写 fastboot 镜像",
         VcomStatus { .. } => "检测 VCOM 设备",
         VcomFlash { .. } => "刷写 VCOM loader",
+    }
+}
+
+fn result_owner(op: &JobOp, current: Page) -> ResultOwner {
+    match op {
+        JobOp::ErofsUnpack { .. } | JobOp::ErofsRepack { .. } => {
+            ResultOwner::Image(ImageKind::Erofs)
+        }
+        JobOp::RamdiskUnpack { .. }
+        | JobOp::RamdiskRepack { .. }
+        | JobOp::RamdiskPatch { .. }
+        | JobOp::RamdiskProbe { .. } => ResultOwner::Image(ImageKind::Ramdisk),
+        JobOp::PartitionInfo { .. } => ResultOwner::Image(ImageKind::Partition),
+        _ => ResultOwner::Page(current),
     }
 }

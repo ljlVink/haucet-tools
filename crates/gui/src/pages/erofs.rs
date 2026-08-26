@@ -1,5 +1,6 @@
 use crate::app::HaucetApp;
-use crate::pages::{Page, ResultView, run_button};
+use crate::pages::images::ImageKind;
+use crate::pages::{ResultView, run_button};
 use crate::util::{human_size, message_box, open_in_file_manager};
 use common::formats::erofs::ErofsManifest;
 use eframe::egui;
@@ -46,8 +47,9 @@ impl ErofsPage {
 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.tab, ErofsTab::Unpack, "解包");
-            ui.selectable_value(&mut self.tab, ErofsTab::Repack, "重新打包");
+            ui.label(egui::RichText::new("操作").weak());
+            ui.selectable_value(&mut self.tab, ErofsTab::Unpack, "解包镜像");
+            ui.selectable_value(&mut self.tab, ErofsTab::Repack, "重建镜像");
         });
         ui.add_space(8.0);
 
@@ -61,7 +63,7 @@ impl ErofsPage {
     }
 
     fn poll_result(&mut self, app: &mut HaucetApp) {
-        let Some(result) = app.take_result(Page::Erofs) else {
+        let Some(result) = app.take_image_result(ImageKind::Erofs) else {
             return;
         };
         if !result.ok {

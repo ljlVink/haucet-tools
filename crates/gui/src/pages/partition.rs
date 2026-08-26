@@ -1,5 +1,5 @@
 use crate::app::HaucetApp;
-use crate::pages::Page;
+use crate::pages::images::ImageKind;
 use crate::util::{human_size, kv, message_box, section};
 use common::entropy::EntropySummary;
 use common::partition::{CertSummary, HarmonySummary, PartitionSummary};
@@ -34,45 +34,39 @@ impl PartitionPage {
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         self.poll_result(app);
 
-        egui::ScrollArea::vertical()
-            .id_salt("partition-scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.add_space(6.0);
-                ui.label(egui::RichText::new("查看分区信息和Shannon熵").weak());
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("镜像文件").strong());
-                    let input_response = ui.add(
-                        egui::TextEdit::singleline(&mut self.input)
-                            .hint_text("镜像路径或拖放文件到这里")
-                            .desired_width(ui.available_width() - 160.0),
-                    );
-                    if input_response.lost_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter))
-                    {
-                        self.select_input(self.input.clone());
-                    }
-                    if ui.button("选择文件…").clicked()
-                        && let Some(path) = app.pick_file("选择镜像或文件", &[])
-                    {
-                        self.select_input(path.display().to_string());
-                    }
-                });
-                let drops = app.take_drops(ui.ctx());
-                if let Some(path) = drops.first() {
-                    self.select_input(path.display().to_string());
-                }
+        ui.set_width(ui.available_width());
+        ui.add_space(6.0);
+        ui.label(egui::RichText::new("查看镜像封装、分区信息和 Shannon 熵").weak());
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("镜像文件").strong());
+            let input_response = ui.add(
+                egui::TextEdit::singleline(&mut self.input)
+                    .hint_text("镜像路径或拖放文件到这里")
+                    .desired_width(ui.available_width() - 160.0),
+            );
+            if input_response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter))
+            {
+                self.select_input(self.input.clone());
+            }
+            if ui.button("选择文件…").clicked()
+                && let Some(path) = app.pick_file("选择镜像或文件", &[])
+            {
+                self.select_input(path.display().to_string());
+            }
+        });
+        let drops = app.take_drops(ui.ctx());
+        if let Some(path) = drops.first() {
+            self.select_input(path.display().to_string());
+        }
 
-                self.start_inspection(app);
-                ui.add_space(8.0);
+        self.start_inspection(app);
+        ui.add_space(8.0);
 
-                if let Some(error) = &self.partition_error {
-                    message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
-                }
-                self.render_results(ui);
-            });
+        if let Some(error) = &self.partition_error {
+            message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
+        }
+        self.render_results(ui);
     }
 
     fn render_results(&self, ui: &mut egui::Ui) {
@@ -100,7 +94,7 @@ impl PartitionPage {
     }
 
     fn poll_result(&mut self, app: &mut HaucetApp) {
-        let Some(result) = app.take_result(Page::Partition) else {
+        let Some(result) = app.take_image_result(ImageKind::Partition) else {
             return;
         };
         let active_input = self.active_input.take();

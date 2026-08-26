@@ -162,17 +162,19 @@ impl HomePage {
             .num_columns(columns)
             .spacing([spacing, spacing])
             .show(ui, |ui| {
-                quick_card(ui, "解update.zip更新包", Page::Package, card_width, app);
+                quick_card(ui, "解包 update.zip 更新包", Page::Package, card_width, app);
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "给 ramdisk 补丁", Page::Ramdisk, card_width, app);
+                quick_card(ui, "镜像工作区", Page::Images, card_width, app);
                 ui.end_row();
-                quick_card(ui, "解/打包 EROFS", Page::Erofs, card_width, app);
+                if quick_card(ui, "识别镜像与分区信息", Page::Images, card_width, app) {
+                    app.images.kind = crate::pages::images::ImageKind::Partition;
+                }
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "分区信息", Page::Partition, card_width, app);
+                quick_card(ui, "浏览 Cpio 归档", Page::Cpio, card_width, app);
                 ui.end_row();
                 quick_card(ui, "Fastboot 刷机", Page::Fastboot, card_width, app);
                 if columns == 1 {
@@ -211,7 +213,11 @@ impl HomePage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActionKind {
     Input,
-    Workspace,
+    ErofsInput,
+    ErofsWorkspace,
+    RamdiskInput,
+    RamdiskWorkspace,
+    PartitionInput,
 }
 
 fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
@@ -221,19 +227,25 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
             ("查看包内组件", Page::Package, ActionKind::Input),
         ],
         FileKind::Erofs => vec![
-            ("解包 EROFS", Page::Erofs, ActionKind::Input),
-            ("查看分区信息", Page::Partition, ActionKind::Input),
+            ("解包 EROFS", Page::Images, ActionKind::ErofsInput),
+            ("查看分区信息", Page::Images, ActionKind::PartitionInput),
         ],
         FileKind::HarmonyFrame => vec![
-            ("Ramdisk 操作", Page::Ramdisk, ActionKind::Input),
-            ("查看分区信息", Page::Partition, ActionKind::Input),
+            ("Ramdisk 操作", Page::Images, ActionKind::RamdiskInput),
+            ("查看分区信息", Page::Images, ActionKind::PartitionInput),
         ],
-        FileKind::Rvt => vec![("查看 RVT 信息", Page::Partition, ActionKind::Input)],
-        FileKind::HvbWrapped => vec![("查看分区信息", Page::Partition, ActionKind::Input)],
+        FileKind::Rvt => vec![("查看 RVT 信息", Page::Images, ActionKind::PartitionInput)],
+        FileKind::HvbWrapped => {
+            vec![("查看分区信息", Page::Images, ActionKind::PartitionInput)]
+        }
         FileKind::Cpio => vec![("浏览 cpio 归档", Page::Cpio, ActionKind::Input)],
-        FileKind::ErofsWorkspace => vec![("重新打包镜像", Page::Erofs, ActionKind::Workspace)],
-        FileKind::RamdiskWorkspace => vec![("重新打包镜像", Page::Ramdisk, ActionKind::Workspace)],
-        FileKind::Unknown => vec![("尝试查看分区信息", Page::Partition, ActionKind::Input)],
+        FileKind::ErofsWorkspace => {
+            vec![("重新打包镜像", Page::Images, ActionKind::ErofsWorkspace)]
+        }
+        FileKind::RamdiskWorkspace => {
+            vec![("重新打包镜像", Page::Images, ActionKind::RamdiskWorkspace)]
+        }
+        FileKind::Unknown => vec![("尝试查看分区信息", Page::Images, ActionKind::PartitionInput)],
     }
 }
 
@@ -245,28 +257,33 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
                 app.package.output = default_output_for(&app.package.input, "package-work");
             }
         }
-        (Page::Erofs, ActionKind::Input) => {
-            app.erofs.unpack.image = path.to_owned();
-            app.erofs.tab = crate::pages::erofs::ErofsTab::Unpack;
+        (Page::Images, ActionKind::ErofsInput) => {
+            app.images.kind = crate::pages::images::ImageKind::Erofs;
+            app.images.erofs.unpack.image = path.to_owned();
+            app.images.erofs.tab = crate::pages::erofs::ErofsTab::Unpack;
         }
-        (Page::Erofs, ActionKind::Workspace) => {
-            app.erofs.repack.workspace = path.to_owned();
-            app.erofs.tab = crate::pages::erofs::ErofsTab::Repack;
+        (Page::Images, ActionKind::ErofsWorkspace) => {
+            app.images.kind = crate::pages::images::ImageKind::Erofs;
+            app.images.erofs.repack.workspace = path.to_owned();
+            app.images.erofs.tab = crate::pages::erofs::ErofsTab::Repack;
         }
-        (Page::Ramdisk, ActionKind::Input) => {
-            app.ramdisk.patch.image = path.to_owned();
-            app.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Patch;
-            if app.ramdisk.patch.output.trim().is_empty() {
-                app.ramdisk.patch.output =
-                    default_output_for(&app.ramdisk.patch.image, "patched.img");
+        (Page::Images, ActionKind::RamdiskInput) => {
+            app.images.kind = crate::pages::images::ImageKind::Ramdisk;
+            app.images.ramdisk.patch.image = path.to_owned();
+            app.images.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Patch;
+            if app.images.ramdisk.patch.output.trim().is_empty() {
+                app.images.ramdisk.patch.output =
+                    default_output_for(&app.images.ramdisk.patch.image, "patched.img");
             }
         }
-        (Page::Ramdisk, ActionKind::Workspace) => {
-            app.ramdisk.repack.workspace = path.to_owned();
-            app.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Repack;
+        (Page::Images, ActionKind::RamdiskWorkspace) => {
+            app.images.kind = crate::pages::images::ImageKind::Ramdisk;
+            app.images.ramdisk.repack.workspace = path.to_owned();
+            app.images.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Repack;
         }
-        (Page::Partition, _) => {
-            app.partition.select_input(path.to_owned());
+        (Page::Images, ActionKind::PartitionInput) => {
+            app.images.kind = crate::pages::images::ImageKind::Partition;
+            app.images.partition.select_input(path.to_owned());
         }
         (Page::Cpio, _) => {
             app.cpio.source = crate::pages::cpio::CpioSource::File;
@@ -295,7 +312,13 @@ fn default_output_for(input: &str, suffix: &str) -> String {
     }
 }
 
-fn quick_card(ui: &mut egui::Ui, title: &str, page: Page, outer_width: f32, app: &mut HaucetApp) {
+fn quick_card(
+    ui: &mut egui::Ui,
+    title: &str,
+    page: Page,
+    outer_width: f32,
+    app: &mut HaucetApp,
+) -> bool {
     let predicted_rect = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(outer_width, 48.0));
     let hovered = ui.input(|input| {
         input
@@ -325,9 +348,11 @@ fn quick_card(ui: &mut egui::Ui, title: &str, page: Page, outer_width: f32, app:
         })
         .response
         .interact(egui::Sense::click());
-    if response.clicked() {
+    let clicked = response.clicked();
+    if clicked {
         app.nav(page);
     }
+    clicked
 }
 
 fn accent() -> egui::Color32 {

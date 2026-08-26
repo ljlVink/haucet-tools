@@ -3,6 +3,7 @@ pub mod entropy;
 pub mod erofs;
 pub mod fastboot;
 pub mod home;
+pub mod images;
 pub mod package;
 pub mod partition;
 pub mod ramdisk;
@@ -14,33 +15,18 @@ use eframe::egui;
 pub enum Page {
     Home,
     Package,
-    Erofs,
-    Ramdisk,
-    Partition,
+    Images,
     Fastboot,
     Vcom,
     Cpio,
 }
 
 impl Page {
-    pub const ALL: [Self; 8] = [
-        Self::Home,
-        Self::Package,
-        Self::Erofs,
-        Self::Ramdisk,
-        Self::Partition,
-        Self::Fastboot,
-        Self::Vcom,
-        Self::Cpio,
-    ];
-
     pub fn title(self) -> &'static str {
         match self {
             Self::Home => "快速开始",
             Self::Package => "更新包解包",
-            Self::Erofs => "EROFS 镜像",
-            Self::Ramdisk => "Ramdisk",
-            Self::Partition => "分区信息",
+            Self::Images => "镜像工作区",
             Self::Fastboot => "Fastboot 刷机",
             Self::Vcom => "VCOM 刷机",
             Self::Cpio => "Cpio 浏览器",

@@ -1,5 +1,6 @@
 use crate::app::HaucetApp;
-use crate::pages::{Page, ResultView, badge_text, run_button};
+use crate::pages::images::ImageKind;
+use crate::pages::{ResultView, badge_text, run_button};
 use crate::util::{human_size, message_box, open_in_file_manager};
 use eframe::egui;
 
@@ -59,9 +60,10 @@ impl RamdiskPage {
 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.tab, RamdiskTab::Unpack, "解包");
-            ui.selectable_value(&mut self.tab, RamdiskTab::Repack, "重新打包");
-            ui.selectable_value(&mut self.tab, RamdiskTab::Patch, "一键打补丁");
+            ui.label(egui::RichText::new("操作").weak());
+            ui.selectable_value(&mut self.tab, RamdiskTab::Unpack, "解包镜像");
+            ui.selectable_value(&mut self.tab, RamdiskTab::Repack, "重建镜像");
+            ui.selectable_value(&mut self.tab, RamdiskTab::Patch, "Patch init_early");
         });
         ui.add_space(8.0);
 
@@ -76,7 +78,7 @@ impl RamdiskPage {
     }
 
     fn poll_result(&mut self, app: &mut HaucetApp) {
-        let Some(result) = app.take_result(Page::Ramdisk) else {
+        let Some(result) = app.take_image_result(ImageKind::Ramdisk) else {
             return;
         };
         if let Some(payload) = result.payload
@@ -124,6 +126,9 @@ impl RamdiskPage {
                 && let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])])
             {
                 self.unpack.image = path.display().to_string();
+                if self.unpack.output.trim().is_empty() {
+                    self.unpack.output = default_workspace(&self.unpack.image);
+                }
             }
         });
         self.handle_drops(ui, app);
@@ -139,8 +144,9 @@ impl RamdiskPage {
             {
                 self.unpack.output = dir.display().to_string();
             }
-            ui.checkbox(&mut self.unpack.force, "覆盖已存在目录");
         });
+        ui.add_space(6.0);
+        ui.checkbox(&mut self.unpack.force, "覆盖已存在目录");
         ui.add_space(8.0);
         let ready = !app.job_running()
             && !self.unpack.image.trim().is_empty()
@@ -207,11 +213,7 @@ impl RamdiskPage {
             egui::RichText::new("把自制的 init_early 二进制替换进 ramdisk, 并自动腾出空间").weak(),
         );
         ui.add_space(4.0);
-        message_box(
-            ui,
-            egui::Color32::from_rgb(230, 170, 40),
-            "流程：备份原 bin/init_early 到 .backup/ → 放入新二进制 → 删除 libclang_rt 调试库腾空间 → 校验新镜像不超过 HVB 证书限制。",
-        );
+
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
@@ -327,7 +329,7 @@ impl RamdiskPage {
             && !self.patch.image.trim().is_empty()
             && !self.patch.binary.trim().is_empty()
             && !self.patch.output.trim().is_empty();
-        if run_button(ui, "一键打补丁", ready, None).clicked() {
+        if run_button(ui, "Patch init_early", ready, None).clicked() {
             app.start_job(crate::worker::JobOp::RamdiskPatch {
                 image: self.patch.image.trim().to_owned(),
                 binary: self.patch.binary.trim().to_owned(),
@@ -340,6 +342,9 @@ impl RamdiskPage {
         let drops = app.take_drops(ui.ctx());
         if let Some(path) = drops.first() {
             self.unpack.image = path.display().to_string();
+            if self.unpack.output.trim().is_empty() {
+                self.unpack.output = default_workspace(&self.unpack.image);
+            }
         }
     }
 
@@ -406,5 +411,21 @@ fn default_patched(image: &str) -> String {
         name
     } else {
         format!("{parent}/{name}")
+    }
+}
+
+fn default_workspace(image: &str) -> String {
+    let path = std::path::Path::new(image);
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "ramdisk".to_owned());
+    let name = format!("{stem}-work");
+    match path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        Some(parent) => parent.join(name).display().to_string(),
+        None => name,
     }
 }
