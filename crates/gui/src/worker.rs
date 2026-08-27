@@ -317,6 +317,13 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 Some(partition::PartitionSummary::Rvt(info)) => {
                     format!("RVT 密钥镜像({} 个描述符)", info.descriptors.len())
                 }
+                Some(partition::PartitionSummary::Gpt(info)) => {
+                    format!(
+                        "GPT 分区表({} 个表，{} 个分区)",
+                        info.tables.len(),
+                        info.partition_count()
+                    )
+                }
                 Some(partition::PartitionSummary::HvbWrapped { .. }) => {
                     "HVB 包装的分区镜像".to_owned()
                 }
@@ -396,17 +403,11 @@ fn vcom_flash(port: &str, address: u32, file: &Path) -> Result<WorkerResult> {
         .with_context(|| format!("opening VCOM port {port}"))?;
     let mut log = |message: &str| emit_log(message);
 
-    vcom::upload(
-        &mut device,
-        &data,
-        address,
-        &mut log,
-        &mut |sent, total| {
-            if total > 0 && (sent == total || sent % (total / 10 + 1) == 0) {
-                emit_log(&format!("Progress: {sent}/{total} bytes"));
-            }
-        },
-    )?;
+    vcom::upload(&mut device, &data, address, &mut log, &mut |sent, total| {
+        if total > 0 && (sent == total || sent % (total / 10 + 1) == 0) {
+            emit_log(&format!("Progress: {sent}/{total} bytes"));
+        }
+    })?;
 
     Ok(WorkerResult {
         ok: true,

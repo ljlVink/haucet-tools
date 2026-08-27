@@ -1,3 +1,4 @@
+use crate::formats::gpt::{self, GptInfo};
 use crate::formats::harmony::HvbFrame;
 use crate::formats::hvb::{HvbCert, HvbFooter, HvbWrapper};
 use crate::formats::rvt;
@@ -36,6 +37,7 @@ pub struct HarmonySummary {
 pub enum PartitionSummary {
     Harmony(HarmonySummary),
     Rvt(rvt::RvtInfo),
+    Gpt(GptInfo),
     HvbWrapped {
         footer: HvbFooter,
         cert: Option<CertSummary>,
@@ -54,6 +56,10 @@ pub fn info(image: &Path) -> io::Result<()> {
                 .to_str()
                 .ok_or_else(|| invalid("path is not valid UTF-8"))?;
             rvt::parse_file(path)
+        }
+        PartitionSummary::Gpt(summary) => {
+            print_gpt_summary(&summary);
+            Ok(())
         }
         PartitionSummary::HvbWrapped {
             footer,
@@ -84,6 +90,9 @@ pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
     if starts_with_magic(image, RVT_MAGIC)? {
         return Ok(PartitionSummary::Rvt(rvt::parse_image(image)?));
     }
+    if has_magic_at(image, gpt::GPT_HEADER_OFFSET, gpt::GPT_SIGNATURE)? {
+        return Ok(PartitionSummary::Gpt(gpt::parse_image(image)?));
+    }
     if let Some(wrapper) = HvbWrapper::read_from(image)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
     {
@@ -100,11 +109,20 @@ pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
     Err(invalid("not a HARMONY!/HVB/RVT partition image"))
 }
 
-fn starts_with_magic(path: &Path, magic: &[u8; 4]) -> io::Result<bool> {
+fn starts_with_magic(path: &Path, magic: &[u8]) -> io::Result<bool> {
     let mut file = File::open(path)?;
-    let mut bytes = [0_u8; 4];
+    let mut bytes = vec![0_u8; magic.len()];
     let read = file.read(&mut bytes)?;
-    Ok(read == magic.len() && &bytes == magic)
+    Ok(read == magic.len() && bytes == magic)
+}
+
+fn has_magic_at(path: &Path, offset: u64, magic: &[u8]) -> io::Result<bool> {
+    let mut file = File::open(path)?;
+    let mut bytes = vec![0_u8; magic.len()];
+    use std::io::{Seek, SeekFrom};
+    file.seek(SeekFrom::Start(offset))?;
+    let read = file.read(&mut bytes)?;
+    Ok(read == magic.len() && bytes == magic)
 }
 
 fn summarize_cert(cert: &HvbCert) -> CertSummary {
@@ -157,6 +175,56 @@ fn print_wrapper_summary(footer: &HvbFooter, cert: Option<&CertSummary>, cert_er
     match cert {
         Some(cert) => print_cert_summary(cert),
         None => eprintln!("  (parse failed: {})", cert_error.unwrap_or("unknown")),
+    }
+}
+
+fn print_gpt_summary(summary: &GptInfo) {
+    eprintln!(
+        "--- GPT tables: {}, partitions: {} ---",
+        summary.tables.len(),
+        summary.partition_count()
+    );
+    for table in &summary.tables {
+        let header = &table.header;
+        eprintln!(
+            "--- GPT table at image offset 0x{:X} ---",
+            table.image_offset
+        );
+        eprintln!(
+            "  revision              = {}.{}",
+            header.revision >> 16,
+            header.revision & 0xFFFF
+        );
+        eprintln!("  header_size           = {}", header.header_size);
+        eprintln!("  disk_guid             = {}", header.disk_guid);
+        eprintln!("  current_lba           = 0x{:X}", header.current_lba);
+        eprintln!("  backup_lba            = 0x{:X}", header.backup_lba);
+        eprintln!(
+            "  usable_lba_range      = 0x{:X}-0x{:X}",
+            header.first_usable_lba, header.last_usable_lba
+        );
+        eprintln!(
+            "  partition_entry_lba   = 0x{:X} (image offset 0x{:X})",
+            header.partition_entry_lba, table.entry_array_offset
+        );
+        eprintln!(
+            "  partition_entry_format= {} entries x {} bytes",
+            header.partition_entry_count, header.partition_entry_size
+        );
+        eprintln!("--- GPT partitions ({}) ---", table.partitions.len());
+        for partition in &table.partitions {
+            eprintln!(
+                "  [{:>3}] {:?}: LBA 0x{:X}-0x{:X} (0x{:X} sectors), type={}, guid={}, attrs=0x{:X}",
+                partition.index,
+                partition.name,
+                partition.first_lba,
+                partition.last_lba,
+                partition.sector_count(),
+                partition.type_guid,
+                partition.unique_guid,
+                partition.attributes,
+            );
+        }
     }
 }
 

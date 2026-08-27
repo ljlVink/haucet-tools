@@ -2,6 +2,7 @@ use crate::app::HaucetApp;
 use crate::pages::images::ImageKind;
 use crate::util::{human_size, kv, message_box, section};
 use common::entropy::EntropySummary;
+use common::formats::gpt::GptInfo;
 use common::partition::{CertSummary, HarmonySummary, PartitionSummary};
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
@@ -153,6 +154,10 @@ impl PartitionPage {
             PartitionSummary::Rvt(rvt) => {
                 badge_heading(ui, "RVT 密钥镜像", egui::Color32::from_rgb(180, 130, 255));
                 self.render_rvt(ui, rvt);
+            }
+            PartitionSummary::Gpt(gpt) => {
+                badge_heading(ui, "GPT 分区表", egui::Color32::from_rgb(100, 200, 140));
+                self.render_gpt(ui, gpt);
             }
             PartitionSummary::HvbWrapped {
                 footer,
@@ -336,6 +341,123 @@ impl PartitionPage {
                             }
                         });
                     });
+                }
+            });
+    }
+
+    fn render_gpt(&self, ui: &mut egui::Ui, gpt: &GptInfo) {
+        let Some(first_table) = gpt.tables.first() else {
+            message_box(
+                ui,
+                egui::Color32::from_rgb(230, 170, 40),
+                "GPT 中没有可读取的表",
+            );
+            return;
+        };
+        let header = &first_table.header;
+        section(ui, "GPT 头部");
+        egui::Grid::new("gpt-header-grid")
+            .num_columns(2)
+            .spacing([18.0, 6.0])
+            .show(ui, |ui| {
+                kv(
+                    ui,
+                    "版本",
+                    format!("{}.{}", header.revision >> 16, header.revision & 0xFFFF),
+                );
+                kv(ui, "磁盘 GUID", &header.disk_guid);
+                kv(
+                    ui,
+                    "可用 LBA 范围",
+                    format!(
+                        "{} - {}",
+                        crate::util::hex64(header.first_usable_lba),
+                        crate::util::hex64(header.last_usable_lba)
+                    ),
+                );
+                kv(
+                    ui,
+                    "分区表条目",
+                    format!(
+                        "{} 个，每个 {} B",
+                        header.partition_entry_count, header.partition_entry_size
+                    ),
+                );
+                kv(ui, "GPT 表", gpt.tables.len().to_string());
+                kv(ui, "已使用条目", gpt.partition_count().to_string());
+            });
+
+        if gpt.partition_count() == 0 {
+            return;
+        }
+
+        ui.add_space(6.0);
+        section(ui, "分区");
+        TableBuilder::new(ui)
+            .striped(true)
+            .column(Column::auto().at_least(38.0))
+            .column(Column::auto().at_least(85.0))
+            .column(Column::auto().at_least(130.0))
+            .column(Column::auto().at_least(105.0))
+            .column(Column::auto().at_least(105.0))
+            .column(Column::auto().at_least(90.0))
+            .column(Column::remainder().at_least(180.0))
+            .header(24.0, |mut header| {
+                header.col(|ui| {
+                    ui.strong("序号");
+                });
+                header.col(|ui| {
+                    ui.strong("GPT 表偏移");
+                });
+                header.col(|ui| {
+                    ui.strong("分区");
+                });
+                header.col(|ui| {
+                    ui.strong("起始 LBA");
+                });
+                header.col(|ui| {
+                    ui.strong("结束 LBA");
+                });
+                header.col(|ui| {
+                    ui.strong("大小");
+                });
+                header.col(|ui| {
+                    ui.strong("类型 GUID");
+                });
+            })
+            .body(|mut body| {
+                for table in &gpt.tables {
+                    for partition in &table.partitions {
+                        body.row(24.0, |mut row| {
+                            row.col(|ui| {
+                                ui.label(partition.index.to_string());
+                            });
+                            row.col(|ui| {
+                                ui.label(crate::util::hex64(table.image_offset));
+                            });
+                            row.col(|ui| {
+                                ui.label(&partition.name);
+                            });
+                            row.col(|ui| {
+                                ui.label(crate::util::hex64(partition.first_lba));
+                            });
+                            row.col(|ui| {
+                                ui.label(crate::util::hex64(partition.last_lba));
+                            });
+                            row.col(|ui| {
+                                ui.label(human_size(partition.sector_count().saturating_mul(512)));
+                            });
+                            row.col(|ui| {
+                                ui.label(egui::RichText::new(&partition.type_guid).monospace())
+                                    .on_hover_text(format!(
+                                        "唯一 GUID: {}\n属性: 0x{:X}\n条目数组偏移: 0x{:X}",
+                                        partition.unique_guid,
+                                        partition.attributes,
+                                        table.entry_array_offset,
+                                    ));
+                            });
+                        });
+                    }
                 }
             });
     }

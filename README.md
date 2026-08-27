@@ -20,7 +20,8 @@ haucet-tools erofs repack system-work --output new-system.img
 haucet-tools partition-info ramdisk.img # also system.img
 haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
 haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
-haucet-tools partition-info rvt.img # or any HARMONY!/HVB partition
+haucet-tools partition-info rvt.img
+haucet-tools partition-info ptable.img
 haucet-tools cpio ramdisk.cpio ls --recursive /
 haucet-tools fastboot devices
 haucet-tools fastboot flash updater updater_vendor.img

@@ -10,6 +10,7 @@ const HVB_FOOTER_SIZE: usize = 104;
 const HVB_FOOTER_MAGIC: &[u8; 8] = b"HVB\0\0\0\0\0";
 const HARMONY_MAGIC: &[u8; 8] = b"HARMONY!";
 const RVT_MAGIC: &[u8; 4] = b"rot\0";
+const GPT_MAGIC: &[u8; 8] = b"EFI PART";
 const EROFS_MAGIC: &[u8; 4] = &[0xe2, 0xe1, 0xf5, 0xe0];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,8 @@ pub enum FileKind {
     HarmonyFrame,
     /// RVT (rot\0) 密钥镜像
     Rvt,
+    /// GPT 分区表镜像（常见文件名为 ptable.img）
+    Gpt,
     /// 仅有 HVB 尾部包装的分区镜像
     HvbWrapped,
     /// 裸 cpio 归档(ramdisk.cpio)
@@ -41,6 +44,7 @@ impl FileKind {
             Self::Erofs => "EROFS 分区镜像",
             Self::HarmonyFrame => "HARMONY! 镜像",
             Self::Rvt => "RVT 密钥镜像",
+            Self::Gpt => "GPT 分区表镜像",
             Self::HvbWrapped => "HVB 分区镜像",
             Self::Cpio => "cpio 归档",
             Self::ErofsWorkspace => "EROFS 工作区",
@@ -159,6 +163,15 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     // RVT
     if head_len >= 4 && &head[0..4] == RVT_MAGIC {
         return (FileKind::Rvt, "RVT 密钥镜像, 包含分区公钥描述符".to_owned());
+    }
+
+    // GPT header is at LBA 1 (offset 512) for a standard 512-byte logical block.
+    let mut gpt_magic = [0_u8; 8];
+    if length >= 520
+        && read_at(&mut file, &mut gpt_magic, 512).unwrap_or(0) == GPT_MAGIC.len()
+        && &gpt_magic == GPT_MAGIC
+    {
+        return (FileKind::Gpt, "GPT 分区表镜像".to_owned());
     }
 
     // EROFS magic at offset 1024
