@@ -141,7 +141,7 @@ impl PartitionPage {
                 Err(error) => {
                     self.summary = None;
                     self.entropy_summary = None;
-                    self.partition_error = Some(format!("解析结果失败：{error}"));
+                    self.partition_error = Some(format!("解析结果失败: {error}"));
                 }
             }
         }
@@ -194,7 +194,7 @@ impl PartitionPage {
                             ui,
                             egui::Color32::from_rgb(230, 170, 40),
                             format!(
-                                "证书解析失败：{}",
+                                "证书解析失败: {}",
                                 cert_error.as_deref().unwrap_or("未知错误")
                             ),
                         );

@@ -301,7 +301,7 @@ impl CpioPage {
                 self.message = Some((
                     true,
                     format!(
-                        "已加载 {} 个条目(来源：{})",
+                        "已加载 {} 个条目(来源: {})",
                         loaded.cpio.entries.len(),
                         label
                     ),
@@ -553,12 +553,12 @@ impl CpioPage {
                                         }
                                         Err(error) => {
                                             self.message =
-                                                Some((false, format!("添加失败：{error}")));
+                                                Some((false, format!("添加失败: {error}")));
                                         }
                                     }
                                 }
                                 (Err(error), _) => {
-                                    self.message = Some((false, format!("无效的模式：{error}")));
+                                    self.message = Some((false, format!("无效的模式: {error}")));
                                 }
                                 _ => {
                                     self.message =
@@ -646,7 +646,7 @@ impl CpioPage {
             if loaded.from_image {
                 ui.label(
                     egui::RichText::new(
-                        "内容来自镜像：修改后请“另存为”cpio, 再到 Ramdisk 页重新打包",
+                        "内容来自镜像: 修改后请\"另存为\"cpio, 再到 Ramdisk 页重新打包",
                     )
                     .weak(),
                 );
@@ -688,7 +688,7 @@ fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<u
     for path in paths {
         let output = format!("{dir}/{path}");
         cpio.extract_entry(path, &output)
-            .map_err(|error| anyhow::anyhow!("提取 {path} 失败：{error}"))?;
+            .map_err(|error| anyhow::anyhow!("提取 {path} 失败: {error}"))?;
         count += 1;
     }
     Ok(count)

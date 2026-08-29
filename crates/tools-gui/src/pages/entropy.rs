@@ -108,5 +108,5 @@ fn render_window_chart(ui: &mut egui::Ui, summary: &EntropySummary) {
         egui::FontId::monospace(10.0),
         ui.visuals().weak_text_color(),
     );
-    response.on_hover_text("横轴：文件偏移；纵轴：Shannon 熵（bits/byte）");
+    response.on_hover_text("横轴: 文件偏移; 纵轴: Shannon 熵(bits/byte)");
 }

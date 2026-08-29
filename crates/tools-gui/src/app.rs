@@ -151,19 +151,19 @@ impl HaucetApp {
             Ok(running) => {
                 let label = job_label(&running.op);
                 self.job_owner = owner;
-                self.push_log(format!("── 开始任务：{label}"));
+                self.push_log(format!("── 开始任务: {label}"));
                 self.job = Some(running);
                 self.last_result = None;
                 true
             }
             Err(error) => {
-                self.push_log(format!("[错误] 无法启动任务：{error:#}"));
+                self.push_log(format!("[错误] 无法启动任务: {error:#}"));
                 self.last_result = Some((
                     owner,
                     JobResult {
                         ok: false,
                         cancelled: false,
-                        summary: format!("无法启动任务：{error:#}"),
+                        summary: format!("无法启动任务: {error:#}"),
                         payload: None,
                     },
                 ));

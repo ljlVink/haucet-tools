@@ -331,7 +331,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             };
             summary_payload(
                 format!(
-                    "{}；信息熵 {:.6} bits/byte ({:.2}%)",
+                    "{}; 信息熵 {:.6} bits/byte ({:.2}%)",
                     label,
                     entropy_summary.entropy_bits_per_byte,
                     entropy_summary.normalized_percent()

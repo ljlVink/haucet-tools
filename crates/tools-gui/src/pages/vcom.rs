@@ -248,7 +248,7 @@ impl VcomPage {
                         }
                         Err(error) => {
                             self.status = None;
-                            self.status_error = Some(format!("解析 VCOM 状态失败：{error}"));
+                            self.status_error = Some(format!("解析 VCOM 状态失败: {error}"));
                         }
                     }
                 }

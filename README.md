@@ -27,6 +27,7 @@ haucet-tools fastboot devices
 haucet-tools fastboot flash updater updater_vendor.img
 haucet-tools fastboot getvar product
 haucet-tools fastboot reboot
+haucet-tools fastboot oem device-info
 haucet-tools vcom devices
 haucet-tools vcom flash COM3 0x80000000 loader.bin
 ```

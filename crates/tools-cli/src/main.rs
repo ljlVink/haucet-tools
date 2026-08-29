@@ -79,6 +79,12 @@ enum FastbootCommand {
     },
     /// Reboot the device out of fastboot mode
     Reboot,
+    /// Send a vendor-specific OEM command, such as `oem device-info`
+    Oem {
+        /// OEM command and optional arguments
+        #[arg(required = true, num_args = 1.., trailing_var_arg = true)]
+        command: Vec<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -381,6 +387,7 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
                 fastboot::flash(&partition, &image).await
             }
             FastbootCommand::Reboot => fastboot::reboot().await,
+            FastbootCommand::Oem { command } => fastboot::oem(&command).await,
         }
     })
 }

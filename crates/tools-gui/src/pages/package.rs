@@ -119,7 +119,7 @@ impl PackagePage {
                                 ui.add(
                                     egui::TextEdit::singleline(&mut self.custom_partitions)
                                         .hint_text(
-                                            "可选：逗号分隔, 如 system, vendor；留空则使用下方勾选",
+                                            "可选: 逗号分隔, 如 system, vendor; 留空则使用下方勾选",
                                         )
                                         .desired_width(380.0),
                                 );
@@ -167,7 +167,6 @@ impl PackagePage {
             return;
         };
         if !result.ok {
-            // 区分“读取包内容”和“解包”两种失败
             if self.index.is_none() && self.inspect_message.is_none() {
                 self.inspect_message = Some(result.summary.clone());
             }

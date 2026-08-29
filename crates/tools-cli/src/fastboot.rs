@@ -63,6 +63,20 @@ pub async fn reboot() -> Result<()> {
     Ok(())
 }
 
+pub async fn oem(args: &[String]) -> Result<()> {
+    let mut fb = open_first().await?;
+    let command = args.join(" ");
+    let lines = fb
+        .oem(&command)
+        .await
+        .with_context(|| format!("failed to send OEM command: {command}"))?;
+    for line in lines {
+        println!("{line}");
+    }
+    println!("OEM command completed");
+    Ok(())
+}
+
 async fn open_first() -> Result<NusbFastBoot> {
     let mut devices = hm_fastboot::nusb::devices()
         .await

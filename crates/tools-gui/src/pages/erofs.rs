@@ -231,7 +231,7 @@ impl ErofsPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "注意：重新打包不会重新签名 HVB 证书".to_owned(),
+                "注意: 重新打包不会重新签名 HVB 证书".to_owned(),
             );
         } else if let Some(error) = &self.repack.manifest_error {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);

@@ -192,7 +192,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
 
     (
         FileKind::Unknown,
-        "没有识别出已知格式；可以尝试“查看分区信息”或直接解包".to_owned(),
+        "没有识别出已知格式; 可以尝试\"查看分区信息\"或直接解包".to_owned(),
     )
 }
 

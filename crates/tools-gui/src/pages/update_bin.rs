@@ -214,7 +214,7 @@ impl UpdateBinPage {
                 ui.ctx().copy_text(copy);
             }
             ui.label(
-                egui::RichText::new("提示：点击行可选中/取消, 勾选决定“解包勾选组件”的内容").weak(),
+                egui::RichText::new("提示: 点击行可选中/取消, 勾选决定\"解包勾选组件\"的内容").weak(),
             );
         });
         ui.add_space(4.0);
