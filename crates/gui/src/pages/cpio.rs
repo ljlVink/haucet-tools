@@ -39,6 +39,9 @@ pub struct CpioPage {
     pub filter: String,
     pub expand: bool,
     pub dirty: bool,
+    /// Monotonically advances after each in-memory archive mutation.  A save
+    /// only clears `dirty` when it wrote the current revision.
+    pub revision: u64,
     pub add_target: String,
     pub add_mode: String,
     pub mkdir_target: String,
@@ -108,6 +111,11 @@ impl Loaded {
 enum LocalOutcome {
     Loaded(Loaded),
     Done(String),
+    Saved {
+        path: String,
+        revision: u64,
+        update_source: bool,
+    },
 }
 
 pub struct LocalJob {
@@ -254,6 +262,7 @@ impl CpioPage {
         self.selection = None;
         self.message = None;
         self.dirty = false;
+        self.revision = 0;
         self.load_job = Some(spawn_local("加载 cpio", move || {
             let (cpio, from_image, source_path) = match source {
                 CpioSource::File => (Cpio::load_from_file(&path)?, false, path.clone()),
@@ -305,6 +314,24 @@ impl CpioPage {
             }
             Ok(LocalOutcome::Done(text)) => {
                 self.message = Some((true, text));
+            }
+            Ok(LocalOutcome::Saved {
+                path,
+                revision,
+                update_source,
+            }) => {
+                if update_source {
+                    if let Some(loaded) = &mut self.loaded {
+                        loaded.source_path = path.clone();
+                        loaded.from_image = false;
+                    }
+                    self.source = CpioSource::File;
+                    self.path = path.clone();
+                }
+                if self.revision == revision {
+                    self.dirty = false;
+                }
+                self.message = Some((true, format!("已保存到 {path}")));
             }
             Err(error) => {
                 self.message = Some((false, error));
@@ -438,9 +465,10 @@ impl CpioPage {
 
     fn actions_row(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp, loaded: &mut Loaded) {
         let selection = self.selection.clone();
+        let busy = self.load_job.is_some();
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(selection.is_some(), egui::Button::new("提取选中…"))
+                .add_enabled(!busy && selection.is_some(), egui::Button::new("提取选中…"))
                 .clicked()
                 && let Some(dir) = app.pick_dir("选择提取目标目录")
             {
@@ -453,7 +481,9 @@ impl CpioPage {
                     Ok(LocalOutcome::Done(format!("已提取 {entry}")))
                 }));
             }
-            if ui.button("提取全部…").clicked()
+            if ui
+                .add_enabled(!busy, egui::Button::new("提取全部…"))
+                .clicked()
                 && let Some(dir) = app.pick_dir("选择提取目标目录")
             {
                 let paths = loaded.cpio.entries.keys().cloned().collect::<Vec<_>>();
@@ -479,7 +509,7 @@ impl CpioPage {
                 loaded.cpio.rm(&entry, is_dir);
                 loaded.rebuild_tree();
                 self.selection = None;
-                self.dirty = true;
+                self.mark_dirty();
                 self.message = Some((true, format!("已删除 {entry}")));
             }
             if ui.button("添加文件…").clicked()
@@ -520,7 +550,7 @@ impl CpioPage {
                                     match loaded.cpio.add(mode, &target, &file) {
                                         Ok(()) => {
                                             loaded.rebuild_tree();
-                                            self.dirty = true;
+                                            self.mark_dirty();
                                             self.message =
                                                 Some((true, format!("已添加 {file} → {target}")));
                                             self.pending_add = None;
@@ -563,7 +593,7 @@ impl CpioPage {
                             if !target.is_empty() {
                                 loaded.cpio.mkdir(0o750, &target);
                                 loaded.rebuild_tree();
-                                self.dirty = true;
+                                self.mark_dirty();
                                 self.message = Some((true, format!("已创建目录 {target}")));
                                 self.mkdir_target.clear();
                             }
@@ -576,7 +606,7 @@ impl CpioPage {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
-                    !loaded.from_image && self.dirty,
+                    !busy && !loaded.from_image && self.dirty,
                     egui::Button::new("保存修改"),
                 )
                 .on_hover_text("写回当前来源文件")
@@ -584,28 +614,38 @@ impl CpioPage {
             {
                 let path = loaded.source_path.clone();
                 let snapshot = loaded.snapshot();
+                let revision = self.revision;
                 self.message = None;
                 self.load_job = Some(spawn_local("保存", move || {
                     let mut bytes = Vec::new();
                     snapshot.dump_to(&mut bytes)?;
                     std::fs::write(&path, bytes)?;
-                    Ok(LocalOutcome::Done(format!("已保存到 {path}")))
+                    Ok(LocalOutcome::Saved {
+                        path,
+                        revision,
+                        update_source: false,
+                    })
                 }));
-                self.dirty = false;
             }
-            if ui.button("另存为…").clicked()
+            if ui
+                .add_enabled(!busy, egui::Button::new("另存为…"))
+                .clicked()
                 && let Some(path) = app.pick_save("保存 cpio 文件", "ramdisk.cpio")
             {
                 let path = path.display().to_string();
                 let snapshot = loaded.snapshot();
+                let revision = self.revision;
                 self.message = None;
                 self.load_job = Some(spawn_local("另存为", move || {
                     let mut bytes = Vec::new();
                     snapshot.dump_to(&mut bytes)?;
                     std::fs::write(&path, bytes)?;
-                    Ok(LocalOutcome::Done(format!("已保存到 {path}")))
+                    Ok(LocalOutcome::Saved {
+                        path,
+                        revision,
+                        update_source: true,
+                    })
                 }));
-                self.dirty = false;
             }
             if loaded.from_image {
                 ui.label(
@@ -639,6 +679,11 @@ impl CpioPage {
                         crate::util::kv(ui, "大小", human_size(entry.data.len() as u64));
                     });
             });
+    }
+
+    fn mark_dirty(&mut self) {
+        self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 }
 
