@@ -1,6 +1,6 @@
 use crate::app::HaucetApp;
 use crate::pages::{Page, ResultView, run_button};
-use crate::util::{human_size, kv, message_box, open_in_file_manager, section};
+use crate::util::{message_box, open_in_file_manager};
 use common::nvme::{NveBlockSummary, NveImageSummary, NveItemSummary};
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
@@ -13,13 +13,6 @@ enum ValueMode {
 }
 
 impl ValueMode {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Text => "Text",
-            Self::Hex => "Hex",
-        }
-    }
-
     fn spec(self) -> &'static str {
         match self {
             Self::Text => "text",
@@ -36,7 +29,6 @@ pub struct NvmePage {
     value: String,
     value_mode: ValueMode,
     sync_all_blocks: bool,
-    auto_hash_usrkey: bool,
     summary: Option<NveImageSummary>,
     selected_slot: Option<usize>,
     result: Option<ResultView>,
@@ -53,7 +45,6 @@ impl Default for NvmePage {
             value: String::new(),
             value_mode: ValueMode::default(),
             sync_all_blocks: true,
-            auto_hash_usrkey: true,
             summary: None,
             selected_slot: None,
             result: None,
@@ -72,13 +63,18 @@ impl NvmePage {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("NVMe / NVE 编辑器").strong().size(22.0));
-                ui.label(
-                    egui::RichText::new("查看 HiSilicon NVE 条目")
-                        .weak(),
-                );
-                ui.add_space(14.0);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new("NVMe / NVE 编辑器").strong().size(22.0));
+                        ui.label(egui::RichText::new("查看与修改 HiSilicon NVE 条目").weak());
+                    });
+                    if app.job_running() {
+                        ui.add_space(8.0);
+                        ui.add(egui::Spinner::new().size(16.0));
+                    }
+                });
+                ui.add_space(12.0);
 
                 self.image_row(ui, app);
                 if let Some(path) = app.take_drops(ui.ctx()).first().cloned() {
@@ -92,33 +88,31 @@ impl NvmePage {
                     });
                 }
 
-                if app.job_running() {
-                    ui.add(egui::Spinner::new().size(16.0));
-                }
-
                 if let Some(summary) = self.summary.clone() {
-                    ui.add_space(8.0);
+                    ui.add_space(12.0);
                     self.render_summary(ui, &summary);
-                    ui.add_space(8.0);
-                    self.render_editor(ui, app);
-                    ui.add_space(8.0);
+                    ui.add_space(12.0);
+                    self.render_editor(ui, app, &summary);
+                    self.render_result(ui);
+                    ui.add_space(12.0);
                     self.render_items(ui, &summary);
-                    ui.add_space(8.0);
+                    ui.add_space(10.0);
                     self.render_blocks(ui, &summary.blocks);
                 }
 
-                self.render_result(ui);
                 ui.add_space(20.0);
             });
     }
 
     fn image_row(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Image").strong());
+            ui.label(egui::RichText::new("镜像文件").strong());
+            let field_width = (ui.available_width() - 112.0).max(120.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.image)
-                    .hint_text("nvme.img or a raw NVME dump")
-                    .desired_width(ui.available_width() - 220.0),
+                    .hint_text("选择 NVME 分区镜像")
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(field_width),
             );
             if response.changed() {
                 self.summary = None;
@@ -128,8 +122,8 @@ impl NvmePage {
                     self.inspect_pending = true;
                 }
             }
-            if ui.button("Choose file").clicked()
-                && let Some(path) = app.pick_file("Choose NVE image", &[])
+            if ui.button("选择文件").clicked()
+                && let Some(path) = app.pick_file("选择 NVE 镜像", &[])
             {
                 self.set_image(path.display().to_string());
             }
@@ -137,129 +131,187 @@ impl NvmePage {
     }
 
     fn render_summary(&self, ui: &mut egui::Ui, summary: &NveImageSummary) {
-        section(ui, "Image summary");
-        egui::Grid::new("nvme-summary-grid")
-            .num_columns(2)
-            .spacing([18.0, 6.0])
-            .show(ui, |ui| {
-                kv(ui, "Size", human_size(summary.file_size));
-                kv(
-                    ui,
-                    "Blocks",
-                    format!(
-                        "{} total / {} active",
-                        summary.total_blocks, summary.active_blocks
-                    ),
-                );
-                kv(
-                    ui,
-                    "Partition",
-                    if summary.partition_name.is_empty() {
-                        "Unknown".to_owned()
-                    } else {
-                        summary.partition_name.clone()
-                    },
-                );
-                kv(ui, "Version", summary.version.to_string());
-                kv(ui, "Entries", summary.valid_items.to_string());
-                kv(
-                    ui,
+        let blocks = format!("{} / {}", summary.active_blocks, summary.total_blocks);
+        let entries = summary.valid_items.to_string();
+        let version = format!("版本 {}", summary.version);
+        let (crc_value, crc_detail, crc_color) = if summary.crc_invalid == 0 {
+            (
+                "全部通过".to_owned(),
+                format!("{} 项已校验", summary.crc_valid),
+                Some(egui::Color32::from_rgb(95, 190, 125)),
+            )
+        } else {
+            (
+                format!("{} 项异常", summary.crc_invalid),
+                format!("{} 项通过", summary.crc_valid),
+                Some(egui::Color32::from_rgb(225, 155, 60)),
+            )
+        };
+
+        ui.label(egui::RichText::new("镜像概览").strong().size(16.0));
+        ui.add_space(5.0);
+        if ui.available_width() >= 760.0 {
+            ui.columns(3, |columns| {
+                summary_stat(&mut columns[0], "活动块", &blocks, "活动 / 总数", None);
+                summary_stat(&mut columns[1], "有效条目", &entries, &version, None);
+                summary_stat(
+                    &mut columns[2],
                     "CRC32C",
-                    format!(
-                        "{} valid / {} invalid",
-                        summary.crc_valid, summary.crc_invalid
-                    ),
+                    &crc_value,
+                    &crc_detail,
+                    crc_color,
                 );
             });
+        } else {
+            ui.columns(2, |columns| {
+                summary_stat(&mut columns[0], "活动块", &blocks, "活动 / 总数", None);
+                summary_stat(&mut columns[1], "有效条目", &entries, &version, None);
+            });
+            ui.add_space(6.0);
+            summary_stat(ui, "CRC32C", &crc_value, &crc_detail, crc_color);
+        }
         if summary.crc_invalid != 0 {
+            ui.add_space(8.0);
             message_box(
                 ui,
-                egui::Color32::from_rgb(230, 170, 40),
-                "Some entries have invalid CRC32C. Editing an entry recalculates its CRC in every selected copy.",
+                egui::Color32::from_rgb(225, 155, 60),
+                "镜像中存在 CRC32C 异常条目；写入所选条目时会重新计算对应副本的校验值。",
             );
         }
     }
 
-    fn render_editor(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "Edit entry");
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Key").strong());
-            ui.add(
-                egui::TextEdit::singleline(&mut self.key)
-                    .hint_text("SN, IMEI, MACADDR, FBLOCK...")
-                    .desired_width(180.0),
-            );
-            ui.label(egui::RichText::new("Value mode").weak());
-            egui::ComboBox::from_id_salt("nvme-value-mode")
-                .selected_text(self.value_mode.label())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.value_mode, ValueMode::Text, "Text");
-                    ui.selectable_value(&mut self.value_mode, ValueMode::Hex, "Hex");
+    fn render_editor(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp, summary: &NveImageSummary) {
+        let selected = self
+            .selected_slot
+            .and_then(|slot| {
+                summary.items.iter().find(|item| {
+                    item.slot == slot && item.name.eq_ignore_ascii_case(self.key.trim())
+                })
+            })
+            .cloned();
+        let fill = ui.visuals().faint_bg_color;
+        egui::Frame::group(ui.style())
+            .fill(fill)
+            .corner_radius(6)
+            .inner_margin(egui::Margin::same(12))
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new("编辑条目").strong().size(16.0));
+                    if let Some(item) = &selected {
+                        ui.label(
+                            egui::RichText::new(format!("#{}", item.number))
+                                .small()
+                                .weak(),
+                        );
+                        if item.kernel_protected {
+                            ui.label(
+                                egui::RichText::new("内核保护")
+                                    .small()
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(225, 155, 60)),
+                            );
+                        }
+                    }
                 });
-        });
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Value").strong());
-            ui.add(
-                egui::TextEdit::singleline(&mut self.value)
-                    .hint_text(if self.value_mode == ValueMode::Hex {
-                        "hex bytes, for example 0001ff"
-                    } else {
-                        "text value; FBLOCK accepts 0 or 1"
-                    })
-                    .desired_width(ui.available_width() - 90.0),
-            );
-        });
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.sync_all_blocks, "Update all active copies");
-            ui.checkbox(&mut self.auto_hash_usrkey, "Auto SHA-256 USRKEY");
-        });
-        ui.label(
-            egui::RichText::new(
-                "Writing replaces the source image in place. A timestamped backup is created first.",
-            )
-            .weak(),
-        );
-        ui.add_space(4.0);
-        let ready = !app.job_running()
-            && !self.image.trim().is_empty()
-            && !self.key.trim().is_empty()
-            && self.summary.is_some();
-        if run_button(
-            ui,
-            "Write source (backup)",
-            ready,
-            Some("Create a backup, update the selected entry, and recalculate CRC32C"),
-        )
-        .clicked()
-        {
-            self.result = None;
-            self.pending_edit = true;
-            app.start_job(crate::worker::JobOp::NvmeEdit {
-                image: self.image.trim().to_owned(),
-                key: self.key.trim().to_owned(),
-                value: self.value.clone(),
-                value_format: self.value_mode.spec().to_owned(),
-                sync_all_blocks: self.sync_all_blocks,
+                ui.add_space(8.0);
+
+                let previous_mode = self.value_mode;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new("条目名称").strong());
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.key)
+                            .hint_text("例如 SN、IMEI、FBLOCK")
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(190.0),
+                    );
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new("值格式").strong());
+                    ui.selectable_value(&mut self.value_mode, ValueMode::Text, "文本");
+                    ui.selectable_value(&mut self.value_mode, ValueMode::Hex, "十六进制");
+                });
+                if previous_mode != self.value_mode
+                    && let Some(item) = &selected
+                {
+                    self.value = match self.value_mode {
+                        ValueMode::Text if !item.value_text.is_empty() => item.value_text.clone(),
+                        _ => item.value_hex.clone(),
+                    };
+                }
+
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("条目值").strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{} 个字符", self.value.chars().count()))
+                                .small()
+                                .weak(),
+                        );
+                    });
+                });
+                let hint = if self.value_mode == ValueMode::Hex {
+                    "输入十六进制字节，例如 0001ff"
+                } else {
+                    "输入文本内容"
+                };
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.value)
+                        .hint_text(hint)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_rows(2)
+                        .desired_width(ui.available_width()),
+                );
+
+                ui.add_space(6.0);
+                let ready = !app.job_running()
+                    && !self.image.trim().is_empty()
+                    && !self.key.trim().is_empty()
+                    && self.summary.is_some();
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut self.sync_all_blocks, "同步全部活动副本");
+                    ui.label(
+                        egui::RichText::new("写入前会自动创建带时间戳的备份")
+                            .small()
+                            .weak(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if run_button(
+                            ui,
+                            "写入并备份",
+                            ready,
+                            Some("修改源镜像中的条目并重新计算 CRC32C"),
+                        )
+                        .clicked()
+                        {
+                            self.result = None;
+                            self.pending_edit = true;
+                            app.start_job(crate::worker::JobOp::NvmeEdit {
+                                image: self.image.trim().to_owned(),
+                                key: self.key.trim().to_owned(),
+                                value: self.value.clone(),
+                                value_format: self.value_mode.spec().to_owned(),
+                                sync_all_blocks: self.sync_all_blocks,
+                            });
+                        }
+                    });
+                });
             });
-        }
     }
 
     fn render_items(&mut self, ui: &mut egui::Ui, summary: &NveImageSummary) {
-        section(ui, "Entries");
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Filter").weak());
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new("NVE 条目").strong().size(16.0));
+            ui.add_space(10.0);
             ui.add(
                 egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text("name, number, value, or hex")
-                    .desired_width(300.0),
+                    .hint_text("搜索名称、编号或值")
+                    .desired_width(280.0),
             );
-            ui.label(
-                egui::RichText::new(format!("{} entries", summary.items.len()))
-                    .weak()
-                    .small(),
-            );
+            if !self.filter.is_empty() && ui.button("×").on_hover_text("清除搜索").clicked() {
+                self.filter.clear();
+            }
         });
-        ui.add_space(4.0);
+        ui.add_space(5.0);
 
         let filter = self.filter.trim().to_ascii_lowercase();
         let items = summary
@@ -274,82 +326,136 @@ impl NvmePage {
             })
             .cloned()
             .collect::<Vec<NveItemSummary>>();
+        ui.label(
+            egui::RichText::new(format!("显示 {} / {} 项", items.len(), summary.items.len()))
+                .small()
+                .weak(),
+        );
+        ui.add_space(4.0);
+
         let selected_slot = self.selected_slot;
+        let table_height = (ui.clip_rect().height() * 0.42).clamp(260.0, 420.0);
         TableBuilder::new(ui)
+            .id_salt("nvme-items-table")
             .striped(true)
-            .column(Column::auto().at_least(62.0))
-            .column(Column::auto().at_least(120.0))
-            .column(Column::auto().at_least(82.0))
-            .column(Column::remainder().at_least(180.0))
-            .column(Column::auto().at_least(80.0))
-            .header(26.0, |mut header| {
+            .resizable(true)
+            .sense(egui::Sense::click())
+            .min_scrolled_height(table_height)
+            .max_scroll_height(table_height)
+            .auto_shrink([false, false])
+            .column(Column::exact(72.0))
+            .column(Column::initial(150.0).at_least(110.0).clip(true))
+            .column(Column::exact(68.0))
+            .column(Column::remainder().at_least(180.0).clip(true))
+            .column(Column::exact(82.0))
+            .header(30.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("Number");
+                    ui.strong("编号");
                 });
                 header.col(|ui| {
-                    ui.strong("Name");
+                    ui.strong("名称");
                 });
                 header.col(|ui| {
-                    ui.strong("Size");
+                    ui.strong("大小");
                 });
                 header.col(|ui| {
-                    ui.strong("Value");
+                    ui.strong("值");
                 });
                 header.col(|ui| {
                     ui.strong("CRC");
                 });
             })
             .body(|mut body| {
-                for item in items {
-                    body.row(26.0, |mut row| {
-                        let selected = selected_slot == Some(item.slot);
+                if items.is_empty() {
+                    body.row(44.0, |mut row| {
+                        row.col(|_| {});
+                        row.col(|_| {});
+                        row.col(|_| {});
                         row.col(|ui| {
-                            if ui
-                                .selectable_label(selected, item.number.to_string())
-                                .clicked()
-                            {
-                                self.select_item(&item);
+                            ui.label(egui::RichText::new("没有匹配的条目").weak());
+                        });
+                        row.col(|_| {});
+                    });
+                    return;
+                }
+                body.rows(30.0, items.len(), |mut row| {
+                    let item = &items[row.index()];
+                    let selected = selected_slot == Some(item.slot);
+                    row.set_selected(selected);
+                    row.col(|ui| {
+                        ui.label(egui::RichText::new(item.number.to_string()).monospace());
+                    });
+                    row.col(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&item.name).strong().monospace());
+                            if item.kernel_protected {
+                                ui.label(
+                                    egui::RichText::new("保护")
+                                        .small()
+                                        .color(egui::Color32::from_rgb(225, 155, 60)),
+                                );
                             }
-                        });
-                        row.col(|ui| {
-                            if ui.selectable_label(selected, &item.name).clicked() {
-                                self.select_item(&item);
-                            }
-                        });
-                        row.col(|ui| {
-                            ui.label(item.valid_size.to_string());
-                        });
-                        row.col(|ui| {
-                            let display = if item.value_text.is_empty() {
-                                format!("0x{}", item.value_hex)
-                            } else {
-                                item.value_text.clone()
-                            };
-                            ui.label(display).on_hover_text(format!(
-                                "hex: {}\n{}",
-                                item.value_hex, item.description
-                            ));
-                        });
-                        row.col(|ui| {
-                            let (label, color) = if item.crc_valid {
-                                ("OK", egui::Color32::from_rgb(90, 200, 120))
-                            } else {
-                                ("INVALID", egui::Color32::from_rgb(230, 90, 90))
-                            };
-                            ui.label(egui::RichText::new(label).color(color));
                         });
                     });
-                }
+                    row.col(|ui| {
+                        ui.label(format!("{} B", item.valid_size));
+                    });
+                    row.col(|ui| {
+                        let display = if item.value_text.is_empty() {
+                            format!("0x{}", item.value_hex)
+                        } else {
+                            item.value_text.clone()
+                        };
+                        let response = ui
+                            .add(
+                                egui::Label::new(egui::RichText::new(&display).monospace())
+                                    .truncate()
+                                    .sense(egui::Sense::click()),
+                            )
+                            .on_hover_ui(|ui| {
+                                ui.set_max_width(520.0);
+                                ui.label(egui::RichText::new("十六进制值").small().weak());
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&item.value_hex).monospace(),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.label(
+                                    egui::RichText::new("双击可复制当前显示值").small().weak(),
+                                );
+                            });
+                        if response.double_clicked() {
+                            ui.ctx().copy_text(display);
+                        }
+                    });
+                    row.col(|ui| {
+                        let (label, color) = if item.crc_valid {
+                            ("通过", egui::Color32::from_rgb(95, 190, 125))
+                        } else {
+                            ("异常", egui::Color32::from_rgb(225, 90, 90))
+                        };
+                        ui.label(egui::RichText::new(label).strong().color(color));
+                    });
+                    let response = row
+                        .response()
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if response.clicked() {
+                        self.select_item(item);
+                    }
+                });
             });
     }
 
     fn render_blocks(&self, ui: &mut egui::Ui, blocks: &[NveBlockSummary]) {
-        egui::CollapsingHeader::new("Active copies")
+        egui::CollapsingHeader::new(format!("活动副本（{}）", blocks.len()))
             .id_salt("nvme-blocks")
             .default_open(false)
             .show(ui, |ui| {
                 TableBuilder::new(ui)
+                    .id_salt("nvme-blocks-table")
                     .striped(true)
+                    .max_scroll_height(220.0)
                     .column(Column::auto().at_least(80.0))
                     .column(Column::auto().at_least(110.0))
                     .column(Column::auto().at_least(90.0))
@@ -357,16 +463,16 @@ impl NvmePage {
                     .column(Column::remainder().at_least(120.0))
                     .header(24.0, |mut header| {
                         header.col(|ui| {
-                            ui.strong("Block");
+                            ui.strong("块");
                         });
                         header.col(|ui| {
-                            ui.strong("Offset");
+                            ui.strong("偏移");
                         });
                         header.col(|ui| {
-                            ui.strong("Age");
+                            ui.strong("代次");
                         });
                         header.col(|ui| {
-                            ui.strong("Entries");
+                            ui.strong("条目");
                         });
                         header.col(|ui| {
                             ui.strong("CRC32C");
@@ -389,7 +495,7 @@ impl NvmePage {
                                 });
                                 row.col(|ui| {
                                     ui.label(format!(
-                                        "{} valid / {} invalid",
+                                        "{} 通过 / {} 异常",
                                         block.crc_valid, block.crc_invalid
                                     ));
                                 });
@@ -411,7 +517,7 @@ impl NvmePage {
         };
         message_box(ui, color, &result.summary);
         if result.ok && !result.output.is_empty() {
-            if ui.button("Open backup location").clicked() {
+            if ui.button("打开备份位置").clicked() {
                 open_in_file_manager(std::path::Path::new(&result.output));
             }
         }
@@ -468,7 +574,7 @@ impl NvmePage {
                 Err(error) => {
                     self.result = Some(ResultView {
                         ok: false,
-                        summary: format!("Unable to parse NVE result: {error}"),
+                        summary: format!("无法解析 NVE 读取结果: {error}"),
                         output: String::new(),
                     });
                 }
@@ -493,9 +599,36 @@ impl NvmePage {
     fn select_item(&mut self, item: &NveItemSummary) {
         self.selected_slot = Some(item.slot);
         self.key = item.name.clone();
+        if item.value_text.is_empty() {
+            self.value_mode = ValueMode::Hex;
+        }
         self.value = match self.value_mode {
             ValueMode::Text if !item.value_text.is_empty() => item.value_text.clone(),
             _ => item.value_hex.clone(),
         };
     }
+}
+
+fn summary_stat(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &str,
+    detail: &str,
+    color: Option<egui::Color32>,
+) {
+    let fill = ui.visuals().faint_bg_color;
+    egui::Frame::group(ui.style())
+        .fill(fill)
+        .corner_radius(6)
+        .inner_margin(egui::Margin::same(10))
+        .show(ui, |ui| {
+            ui.set_min_height(66.0);
+            ui.label(egui::RichText::new(label).small().weak());
+            let mut value_text = egui::RichText::new(value).strong().size(19.0);
+            if let Some(color) = color {
+                value_text = value_text.color(color);
+            }
+            ui.add(egui::Label::new(value_text).truncate());
+            ui.label(egui::RichText::new(detail).small().weak());
+        });
 }

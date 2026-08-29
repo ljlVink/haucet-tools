@@ -60,7 +60,6 @@ pub struct NveItemSummary {
     pub crc_valid: bool,
     pub value_hex: String,
     pub value_text: String,
-    pub description: String,
     pub kernel_protected: bool,
 }
 
@@ -136,7 +135,6 @@ impl NveItem {
             crc_valid: self.crc_valid(),
             value_hex: hex::encode(value),
             value_text: value_text(&name, value),
-            description: item_description(&name, self.number()),
             kernel_protected: matches!(self.number(), 2 | 193 | 194 | 364),
         }
     }
@@ -415,7 +413,7 @@ fn encode_value(
                 let digest = Sha256::digest(trimmed.as_bytes());
                 return Ok((digest.to_vec(), "SHA-256".to_owned()));
             }*/
-            
+
             let value = input.as_bytes().to_vec();
             ensure!(
                 value.len() <= NVE_DATA_SIZE,
@@ -496,24 +494,6 @@ fn value_text(name: &str, value: &[u8]) -> String {
         String::from_utf8_lossy(trimmed).trim().to_owned()
     } else {
         String::new()
-    }
-}
-
-fn item_description(name: &str, number: u32) -> String {
-    match number {
-        2 => "Device serial number (kernel protected)".to_owned(),
-        193 => "Primary IMEI / Wi-Fi identity (kernel protected)".to_owned(),
-        194 => "Secondary IMEI / Bluetooth identity (kernel protected)".to_owned(),
-        364 => "Board serial / MEID (kernel protected)".to_owned(),
-        400 => "Widevine DRM and factory security key".to_owned(),
-        402 => "Factory lock / FRP state".to_owned(),
-        _ if name.eq_ignore_ascii_case("SN") => "Device serial number".to_owned(),
-        _ if name.eq_ignore_ascii_case("MACADDR") || name.contains("MAC") => {
-            "Network MAC address".to_owned()
-        }
-        _ if name.contains("CAM") => "Camera calibration data".to_owned(),
-        _ if name.contains("BAT") => "Battery calibration data".to_owned(),
-        _ => "Hardware or modem NV item".to_owned(),
     }
 }
 
