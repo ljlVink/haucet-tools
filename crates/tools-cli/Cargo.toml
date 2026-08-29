@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-common = { path = "../common" }
+common = { path = "../tools-common" }
 hm-fastboot = { path = "../hm-fastboot" }
 hisi-vcom = { path = "../hisi-vcom" }
 libc.workspace = true

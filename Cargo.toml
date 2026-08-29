@@ -1,14 +1,14 @@
 [workspace]
 members = [
-    "crates/common",
-    "crates/cli",
-    "crates/gui",
+    "crates/tools-common",
+    "crates/tools-cli",
+    "crates/tools-gui",
     "crates/hm-fastboot",
     "crates/hisi-vcom"
 ]
 default-members = [
-    "crates/cli",
-    "crates/gui",
+    "crates/tools-cli",
+    "crates/tools-gui",
 ]
 resolver = "3"
 
