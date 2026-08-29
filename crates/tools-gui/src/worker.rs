@@ -84,7 +84,6 @@ pub enum JobOp {
         value: String,
         value_format: String,
         sync_all_blocks: bool,
-        auto_hash_usrkey: bool,
     },
     FastbootStatus {},
     FastbootReboot {},
@@ -380,7 +379,6 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             value,
             value_format,
             sync_all_blocks,
-            auto_hash_usrkey,
         } => {
             let result = nvme::edit_file_in_place(
                 Path::new(image),
@@ -388,7 +386,6 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 value,
                 value_format,
                 *sync_all_blocks,
-                *auto_hash_usrkey,
             )?;
             summary_payload(
                 format!(

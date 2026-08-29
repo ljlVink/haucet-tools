@@ -9,6 +9,7 @@ license.workspace = true
 anyhow.workspace = true
 bzip2.workspace = true
 bytemuck.workspace = true
+crc32c.workspace = true
 flate2.workspace = true
 hex.workspace = true
 libc.workspace = true
