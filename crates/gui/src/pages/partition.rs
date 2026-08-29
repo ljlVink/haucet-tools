@@ -73,6 +73,12 @@ impl PartitionPage {
     fn render_results(&self, ui: &mut egui::Ui) {
         match (&self.summary, &self.entropy_summary) {
             (Some(summary), Some(entropy)) => {
+                if matches!(summary, PartitionSummary::Gpt(_) | PartitionSummary::Rvt(_)) {
+                    self.render(ui, summary);
+                    ui.add_space(10.0);
+                    crate::pages::entropy::render_summary(ui, entropy);
+                    return;
+                }
                 let available_width = ui.available_width();
                 let spacing = ui.spacing().item_spacing.x;
                 let column_width = ((available_width - spacing * 2.0 - 1.0) / 2.0).max(0.0);

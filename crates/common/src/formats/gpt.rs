@@ -289,4 +289,3 @@ fn format_guid(bytes: &[u8]) -> String {
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
 }
-
