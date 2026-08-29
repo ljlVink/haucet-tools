@@ -171,7 +171,13 @@ impl CpioPage {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add_space(6.0);
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Cpio 浏览器").strong().size(22.0));
+                ui.label(
+                    egui::RichText::new("浏览、提取和编辑 CPIO 文件、Ramdisk 镜像及解包工作区。")
+                        .weak(),
+                );
+                ui.add_space(14.0);
 
                 self.open_row(ui, app);
                 ui.add_space(6.0);
