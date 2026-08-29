@@ -39,8 +39,6 @@ pub struct CpioPage {
     pub filter: String,
     pub expand: bool,
     pub dirty: bool,
-    /// Monotonically advances after each in-memory archive mutation.  A save
-    /// only clears `dirty` when it wrote the current revision.
     pub revision: u64,
     pub add_target: String,
     pub add_mode: String,
@@ -99,8 +97,6 @@ impl Loaded {
         (self.cpio.entries.len(), dirs)
     }
 
-    /// Snapshot of the archive for use in a worker thread (entries are
-    /// cloned; `Cpio` itself is cheap to re-wrap since it owns its data).
     fn snapshot(&self) -> Cpio {
         Cpio {
             entries: self.cpio.entries.clone(),

@@ -30,7 +30,6 @@ pub struct GptHeader {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptPartition {
-    /// Zero-based index within the GPT partition entry array.
     pub index: u32,
     pub type_guid: String,
     pub unique_guid: String,
@@ -48,19 +47,14 @@ impl GptPartition {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptTable {
-    /// Byte offset of this GPT header inside the supplied image.
     pub image_offset: u64,
-    /// Byte offset of the partition-entry array actually used by this table.
     pub entry_array_offset: u64,
     pub header: GptHeader,
-    /// Empty GPT entries are omitted.
     pub partitions: Vec<GptPartition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptInfo {
-    /// A normal GPT image has one table. Huawei `ptable.img` files may embed
-    /// several self-contained GPT tables, so all populated tables are kept.
     pub tables: Vec<GptTable>,
 }
 

@@ -16,23 +16,14 @@ const EROFS_MAGIC: &[u8; 4] = &[0xe2, 0xe1, 0xf5, 0xe0];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
     Unknown,
-    /// update_full_base.zip 之类的 ZIP 更新包
     ZipPackage,
-    /// EROFS 分区镜像
     Erofs,
-    /// HARMONY! 头(ramdisk 或分区镜像)
     HarmonyFrame,
-    /// RVT (rot\0) 密钥镜像
     Rvt,
-    /// GPT 分区表镜像（常见文件名为 ptable.img）
     Gpt,
-    /// 仅有 HVB 尾部包装的分区镜像
     HvbWrapped,
-    /// 裸 cpio 归档(ramdisk.cpio)
     Cpio,
-    /// EROFS 解包工作区(含 haucet-erofs.json)
     ErofsWorkspace,
-    /// Ramdisk 工作区(含 ramdisk.cpio)
     RamdiskWorkspace,
 }
 

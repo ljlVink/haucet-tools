@@ -71,11 +71,6 @@ pub trait Transport {
     fn discard_input(&mut self);
 }
 
-/// A VCOM transport backed by an operating-system serial port such as `COM3`.
-///
-/// Huawei VCOM drivers can expose the same bootrom endpoint either through
-/// WinUSB or through a regular serial port. The latter is the interface used
-/// by the `haucet-tools vcom flash COMx ...` command.
 pub struct SerialVcomDevice {
     port: Box<dyn SerialPort>,
 }
@@ -143,7 +138,6 @@ pub struct SerialUsbInfo {
     pub product: Option<String>,
 }
 
-/// Enumerate serial ports and preserve the USB metadata when the OS exposes it.
 pub fn list_serial_ports() -> Result<Vec<SerialPortCandidate>, Error> {
     Ok(serialport::available_ports()?
         .into_iter()

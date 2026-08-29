@@ -7,16 +7,12 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// Directory the file dialogs start from.
     pub last_dir: Option<String>,
-    /// Directory used for extraction outputs.
     pub last_output: Option<String>,
-    /// Recently opened files (most recent first).
     pub recent: Vec<String>,
     pub force: bool,
     pub allow_grow: bool,
     pub all_erofs: bool,
-    /// update.bin 布局: "auto" | "l1" | "l2"
     pub layout: String,
     pub cpio_extract_dir: Option<String>,
 }

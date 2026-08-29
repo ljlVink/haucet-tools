@@ -33,7 +33,6 @@ pub struct RunningJob {
 }
 
 impl RunningJob {
-    /// Non-blocking poll for pending events.
     pub fn poll(&mut self) -> Option<JobEvent> {
         self.rx.try_recv().ok()
     }

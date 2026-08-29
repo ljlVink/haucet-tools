@@ -337,11 +337,6 @@ impl NusbFastBoot {
         }
     }
 
-    /// Flash a local image file (raw or Android sparse) to `target`.
-    ///
-    /// The image is split into parts according to the device
-    /// `max-download-size` variable. `progress` is invoked with status
-    /// messages and part boundaries while the transfer runs.
     #[tracing::instrument(skip_all, err)]
     pub async fn flash_image(
         &mut self,
@@ -419,14 +414,9 @@ impl NusbFastBoot {
     }
 }
 
-/// Progress events emitted while flashing an image with
-/// [`NusbFastBoot::flash_image`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlashEvent<'a> {
-    /// A human-readable status message.
     Message(&'a str),
-    /// A download+flash part boundary; `index` is the number of parts
-    /// completed (0 right before the first part), `total` the part count.
     Part { index: usize, total: usize },
 }
 
@@ -444,7 +434,6 @@ pub enum FlashError {
     Fastboot(#[from] NusbFastBootError),
 }
 
-/// Upload a raw (non-sparse) image that fits in a single download.
 async fn flash_raw(
     fb: &mut NusbFastBoot,
     target: &str,
@@ -469,8 +458,6 @@ async fn flash_raw(
     Ok(())
 }
 
-/// Read `buf` fully, zero-filling the remainder on EOF (sparse chunk data
-/// may be shorter than a full block).
 fn read_exact_padded<R: Read>(input: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
     let total = buf.len();
     let mut offset = 0;

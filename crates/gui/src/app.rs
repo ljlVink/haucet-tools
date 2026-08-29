@@ -251,7 +251,6 @@ impl HaucetApp {
         picked
     }
 
-    /// Drained list of files dropped onto the window in this frame.
     pub fn take_drops(&mut self, ctx: &egui::Context) -> Vec<PathBuf> {
         ctx.input(|input| {
             input

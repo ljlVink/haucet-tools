@@ -22,7 +22,6 @@ pub struct HvbFooter {
 }
 
 impl HvbFooter {
-    /// Parses a footer from a buffer of exactly FOOTER_SIZE bytes.
     pub fn parse(bytes: &[u8]) -> io::Result<Self> {
         if bytes.len() != FOOTER_SIZE || &bytes[..8] != FOOTER_MAGIC {
             return Err(invalid("not an HVB footer"));

@@ -36,7 +36,6 @@ pub struct RepackState {
     pub tools_dir: String,
     pub manifest: Option<ErofsManifest>,
     pub manifest_error: Option<String>,
-    /// 当前 manifest 来自哪个工作区路径(避免每帧重复读取)。
     pub manifest_from: String,
 }
 
