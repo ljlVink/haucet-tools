@@ -218,6 +218,7 @@ enum ActionKind {
     RamdiskInput,
     RamdiskWorkspace,
     PartitionInput,
+    NvmeInput,
 }
 
 fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
@@ -239,6 +240,7 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
         FileKind::HvbWrapped => {
             vec![("查看分区信息", Page::Images, ActionKind::PartitionInput)]
         }
+        FileKind::Nve => vec![("打开 NVE 编辑器", Page::Nvme, ActionKind::NvmeInput)],
         FileKind::Cpio => vec![("浏览 cpio 归档", Page::Cpio, ActionKind::Input)],
         FileKind::ErofsWorkspace => {
             vec![("重新打包镜像", Page::Images, ActionKind::ErofsWorkspace)]
@@ -285,6 +287,9 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
         (Page::Images, ActionKind::PartitionInput) => {
             app.images.kind = crate::pages::images::ImageKind::Partition;
             app.images.partition.select_input(path.to_owned());
+        }
+        (Page::Nvme, ActionKind::NvmeInput) => {
+            app.nvme.select_input(path.to_owned());
         }
         (Page::Cpio, _) => {
             app.cpio.source = crate::pages::cpio::CpioSource::File;

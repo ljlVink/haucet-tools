@@ -1,10 +1,8 @@
-//! Lightweight file-type detection based on magic bytes, mirroring what the
-//! CLI's subcommands recognize. Used by the home page's drop zone to offer
-//! the right actions for any dropped file.
-
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+
+use common::nvme::{NVE_BLOCK_SIZE, NVE_HEADER_MAGIC, NVE_HEADER_SIZE};
 
 const HVB_FOOTER_SIZE: usize = 104;
 const HVB_FOOTER_MAGIC: &[u8; 8] = b"HVB\0\0\0\0\0";
@@ -22,6 +20,7 @@ pub enum FileKind {
     Rvt,
     Gpt,
     HvbWrapped,
+    Nve,
     Cpio,
     ErofsWorkspace,
     RamdiskWorkspace,
@@ -37,6 +36,7 @@ impl FileKind {
             Self::Rvt => "RVT 密钥镜像",
             Self::Gpt => "GPT 分区表镜像",
             Self::HvbWrapped => "HVB 分区镜像",
+            Self::Nve => "Hisi-NV-Partition",
             Self::Cpio => "cpio 归档",
             Self::ErofsWorkspace => "EROFS 工作区",
             Self::RamdiskWorkspace => "Ramdisk 工作区",
@@ -113,6 +113,24 @@ fn detect_file(path: &Path) -> (FileKind, String) {
 
     let mut head = [0_u8; 180];
     let head_len = read_at(&mut file, &mut head, 0).unwrap_or(0);
+
+    if length >= NVE_BLOCK_SIZE as u64 && length % NVE_BLOCK_SIZE as u64 == 0 {
+        let mut nve_magic = [0_u8; NVE_HEADER_MAGIC.len()];
+        let header_offset = (NVE_BLOCK_SIZE - NVE_HEADER_SIZE) as u64;
+        let mut block_offset = 0_u64;
+        while block_offset < length {
+            if read_at(&mut file, &mut nve_magic, block_offset + header_offset).unwrap_or(0)
+                == nve_magic.len()
+                && nve_magic == NVE_HEADER_MAGIC
+            {
+                return (
+                    FileKind::Nve,
+                    "Hisi-NV-Partition NVE 镜像, 可打开 NVE 编辑器".to_owned(),
+                );
+            }
+            block_offset += NVE_BLOCK_SIZE as u64;
+        }
+    }
 
     // ZIP package
     if head_len >= 4 && &head[0..4] == b"PK\x03\x04" {
