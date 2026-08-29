@@ -14,6 +14,7 @@ pub(crate) struct HaucetApp {
     pub fastboot: pages::fastboot::FastbootPage,
     pub vcom: pages::vcom::VcomPage,
     pub cpio: pages::cpio::CpioPage,
+    pub nvme: pages::nvme::NvmePage,
 
     pub job: Option<RunningJob>,
     job_owner: ResultOwner,
@@ -54,6 +55,7 @@ impl HaucetApp {
             fastboot: pages::fastboot::FastbootPage::default(),
             vcom: pages::vcom::VcomPage::default(),
             cpio: pages::cpio::CpioPage::default(),
+            nvme: pages::nvme::NvmePage::default(),
             job: None,
             job_owner: ResultOwner::Page(Page::Home),
             logs: Vec::new(),
@@ -286,7 +288,7 @@ impl HaucetApp {
         }
 
         nav_group_label(ui, "文件与镜像");
-        for page in [Page::Package, Page::Images, Page::Cpio] {
+        for page in [Page::Package, Page::Images, Page::Cpio, Page::Nvme] {
             if nav_button(ui, self.current, page) {
                 self.nav(page);
             }
@@ -309,6 +311,13 @@ impl HaucetApp {
                     egui::RichText::new("Huawei/HarmonyOS 镜像工具")
                         .weak()
                         .size(11.0),
+                );
+                ui.label(egui::RichText::new("GPL 3.0").weak().size(11.0));
+                ui.hyperlink_to(
+                    egui::RichText::new("GitHub: github.com/ljlVink/haucet-tools")
+                        .weak()
+                        .size(11.0),
+                    "https://github.com/ljlVink/haucet-tools",
                 );
             });
         });
@@ -379,6 +388,11 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.cpio = page;
                 }
+                Page::Nvme => {
+                    let mut page = std::mem::take(&mut self.nvme);
+                    page.ui(ui, self);
+                    self.nvme = page;
+                }
             }
         });
     }
@@ -423,6 +437,8 @@ impl Default for HaucetApp {
 fn job_label(op: &JobOp) -> &'static str {
     use crate::worker::JobOp::*;
     match op {
+        NvmeInspect { .. } => "Read NVMe / NVE",
+        NvmeEdit { .. } => "Edit NVMe / NVE",
         PackageInspect { .. } => "读取更新包内容",
         PackageUnpack { .. } => "解包更新包",
         UpdateList { .. } => "读取 update.bin 索引",

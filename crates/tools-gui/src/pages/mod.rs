@@ -4,6 +4,7 @@ pub mod erofs;
 pub mod fastboot;
 pub mod home;
 pub mod images;
+pub mod nvme;
 pub mod package;
 pub mod partition;
 pub mod ramdisk;
@@ -19,6 +20,7 @@ pub enum Page {
     Fastboot,
     Vcom,
     Cpio,
+    Nvme,
 }
 
 impl Page {
@@ -30,6 +32,7 @@ impl Page {
             Self::Fastboot => "Fastboot 刷机",
             Self::Vcom => "VCOM 刷机",
             Self::Cpio => "Cpio 浏览器",
+            Self::Nvme => "NVMe / NVE",
         }
     }
 }

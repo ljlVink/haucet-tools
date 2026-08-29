@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use common::formats::{cpio, erofs, header::check_fmt};
 use common::package::UpdateLayout;
 use common::tools::ToolPaths;
-use common::{entropy, package, partition, ramdisk};
+use common::{entropy, nvme, package, partition, ramdisk};
 use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
 use hisi_vcom::vcom;
 use serde::{Deserialize, Serialize};
@@ -74,6 +74,17 @@ pub enum JobOp {
     },
     FileEntropy {
         file: String,
+    },
+    NvmeInspect {
+        image: String,
+    },
+    NvmeEdit {
+        image: String,
+        key: String,
+        value: String,
+        value_format: String,
+        sync_all_blocks: bool,
+        auto_hash_usrkey: bool,
     },
     FastbootStatus {},
     FastbootReboot {},
@@ -351,6 +362,40 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                     summary.normalized_percent()
                 ),
                 summary,
+            )
+        }
+        JobOp::NvmeInspect { image } => {
+            let summary = nvme::inspect(Path::new(image))?;
+            summary_payload(
+                format!(
+                    "NVE/NVME: {} 个活动副本, {} 个条目, CRC 错误 {} 个",
+                    summary.active_blocks, summary.valid_items, summary.crc_invalid
+                ),
+                summary,
+            )
+        }
+        JobOp::NvmeEdit {
+            image,
+            key,
+            value,
+            value_format,
+            sync_all_blocks,
+            auto_hash_usrkey,
+        } => {
+            let result = nvme::edit_file_in_place(
+                Path::new(image),
+                key,
+                value,
+                value_format,
+                *sync_all_blocks,
+                *auto_hash_usrkey,
+            )?;
+            summary_payload(
+                format!(
+                    "已修改 {} 个 NVE 条目，备份已创建: {}",
+                    result.updated_items, result.backup_path
+                ),
+                result,
             )
         }
         JobOp::FastbootStatus {} => fastboot_status(),
