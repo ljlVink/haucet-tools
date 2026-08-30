@@ -9,7 +9,12 @@ mod fastboot;
 mod vcom;
 
 #[derive(Debug, Parser)]
-#[command(version, about, arg_required_else_help = true)]
+#[command(
+    name = "haucet-tools",
+    version = common::version::VERSION,
+    about,
+    arg_required_else_help = true
+)]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,

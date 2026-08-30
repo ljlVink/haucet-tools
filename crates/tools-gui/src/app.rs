@@ -351,6 +351,11 @@ impl HaucetApp {
                         .weak()
                         .size(11.0),
                 );
+                ui.label(
+                    egui::RichText::new(format!("版本 {}", common::version::VERSION))
+                        .weak()
+                        .size(11.0),
+                );
                 ui.label(egui::RichText::new(PROJECT_LICENSE_SPDX).weak().size(11.0));
                 ui.hyperlink_to(
                     egui::RichText::new("GitHub: github.com/ljlVink/haucet-tools")

@@ -9,3 +9,4 @@ pub mod partition;
 pub mod process;
 pub mod ramdisk;
 pub mod tools;
+pub mod version;
