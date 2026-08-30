@@ -41,7 +41,9 @@ pub struct GptPartition {
 
 impl GptPartition {
     pub fn sector_count(&self) -> u64 {
-        self.last_lba - self.first_lba + 1
+        self.last_lba
+            .saturating_sub(self.first_lba)
+            .saturating_add(1)
     }
 }
 
@@ -132,10 +134,10 @@ pub fn parse_image(path: &Path) -> io::Result<GptInfo> {
         }
     }
 
-    if tables.is_empty() {
-        if let Some(table) = empty_tables.into_iter().next() {
-            tables.push(table);
-        }
+    if tables.is_empty()
+        && let Some(table) = empty_tables.into_iter().next()
+    {
+        tables.push(table);
     }
     Ok(GptInfo { tables })
 }
