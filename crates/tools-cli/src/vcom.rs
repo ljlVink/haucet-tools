@@ -41,12 +41,3 @@ pub fn flash(port: &str, address: u32, file: &Path) -> Result<()> {
     println!("Flash finished.");
     Ok(())
 }
-
-pub fn parse_addr(value: &str) -> std::result::Result<u32, String> {
-    let value = value.trim();
-    let hex = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-        .unwrap_or(value);
-    u32::from_str_radix(hex, 16).map_err(|error| error.to_string())
-}

@@ -2,6 +2,7 @@ use crate::app::HaucetApp;
 use crate::pages::{Page, ResultView, badge_text, run_button};
 use crate::util::{kv, message_box, section};
 use eframe::egui;
+use hisi_vcom::vcom::parse_address;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -238,10 +239,10 @@ impl VcomPage {
                 } else if let Some(payload) = result.payload {
                     match serde_json::from_value::<VcomStatusPayload>(payload) {
                         Ok(status) => {
-                            if self.port.trim().is_empty() {
-                                if let Some(port) = status.ports.first() {
-                                    self.port = port.name.clone();
-                                }
+                            if self.port.trim().is_empty()
+                                && let Some(port) = status.ports.first()
+                            {
+                                self.port = port.name.clone();
                             }
                             self.status = Some(status);
                             self.status_error = None;
@@ -272,13 +273,4 @@ impl VcomPage {
     fn set_file(&mut self, path: &Path) {
         self.file = path.display().to_string();
     }
-}
-
-fn parse_address(value: &str) -> Result<u32, String> {
-    let value = value.trim();
-    let hex = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-        .unwrap_or(value);
-    u32::from_str_radix(hex, 16).map_err(|error| error.to_string())
 }
