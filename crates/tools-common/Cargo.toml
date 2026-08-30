@@ -21,6 +21,7 @@ serde_json.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 zip.workspace = true
+x509-parser.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

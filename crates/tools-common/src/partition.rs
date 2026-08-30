@@ -1,7 +1,7 @@
 use crate::formats::gpt::{self, GptInfo};
 use crate::formats::harmony::{HARMONY_MAGIC, HvbFrame};
 use crate::formats::hvb::{HvbCert, HvbFooter, HvbWrapper};
-use crate::formats::rvt;
+use crate::formats::{rvt, secimg};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, Read};
@@ -38,6 +38,7 @@ pub enum PartitionSummary {
     Harmony(HarmonySummary),
     Rvt(rvt::RvtInfo),
     Gpt(GptInfo),
+    SecImage(secimg::SecImageInfo),
     HvbWrapped {
         footer: HvbFooter,
         cert: Option<CertSummary>,
@@ -59,6 +60,10 @@ pub fn info(image: &Path) -> io::Result<()> {
         }
         PartitionSummary::Gpt(summary) => {
             print_gpt_summary(&summary);
+            Ok(())
+        }
+        PartitionSummary::SecImage(summary) => {
+            print_secimg_summary(&summary);
             Ok(())
         }
         PartitionSummary::HvbWrapped {
@@ -90,6 +95,9 @@ pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
     if has_magic_at(image, gpt::GPT_HEADER_OFFSET, gpt::GPT_SIGNATURE)? {
         return Ok(PartitionSummary::Gpt(gpt::parse_image(image)?));
     }
+    if secimg::probe_image(image)? {
+        return Ok(PartitionSummary::SecImage(secimg::parse_image(image)?));
+    }
     if let Some(wrapper) = HvbWrapper::read_from(image)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?
     {
@@ -103,7 +111,7 @@ pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
             cert_error,
         });
     }
-    Err(invalid("not a HARMONY!/HVB/RVT partition image"))
+    Err(invalid("not a HARMONY!/HVB/RVT/GPT/Huawei secure image"))
 }
 
 fn starts_with_magic(path: &Path, magic: &[u8]) -> io::Result<bool> {
@@ -222,6 +230,50 @@ fn print_gpt_summary(summary: &GptInfo) {
                 partition.attributes,
             );
         }
+    }
+}
+
+fn print_secimg_summary(summary: &secimg::SecImageInfo) {
+    eprintln!("--- Huawei secure image ---");
+    eprintln!("  image_name             = {:?}", summary.image_name);
+    eprintln!("  partition_name         = {:?}", summary.partition_name);
+    eprintln!("  file_size              = 0x{:X}", summary.file_size);
+    eprintln!(
+        "  certificate_chain_size = 0x{:X}",
+        summary.certificate_chain_size
+    );
+    eprintln!("  header_size            = 0x{:X}", summary.header_size);
+    eprintln!("  payload_offset         = 0x{:X}", summary.payload_offset);
+    eprintln!("  payload_size           = 0x{:X}", summary.payload_size);
+    if let Some(size) = summary.secondary_size {
+        eprintln!("  secondary_size (OID .69)= 0x{size:X}");
+    }
+    eprintln!("  trailing_size          = 0x{:X}", summary.trailing_size);
+    eprintln!(
+        "  payload_sha256         = {} ({})",
+        summary.declared_payload_sha256,
+        if summary.payload_hash_valid {
+            "verified"
+        } else {
+            "MISMATCH"
+        }
+    );
+    eprintln!("--- X.509 certificate chain ---");
+    for certificate in &summary.certificates {
+        eprintln!(
+            "  #{} offset=0x{:X} size=0x{:X} subject={:?}",
+            certificate.chain_index + 1,
+            certificate.offset,
+            certificate.size,
+            certificate.subject
+        );
+        eprintln!(
+            "     validity={} .. {} signature={}",
+            certificate.not_before, certificate.not_after, certificate.signature_algorithm_oid
+        );
+    }
+    for warning in &summary.warnings {
+        eprintln!("  WARN: {warning}");
     }
 }
 

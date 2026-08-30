@@ -19,6 +19,7 @@ pub enum FileKind {
     HarmonyFrame,
     Rvt,
     Gpt,
+    SecImage,
     HvbWrapped,
     Nve,
     Cpio,
@@ -35,6 +36,7 @@ impl FileKind {
             Self::HarmonyFrame => "HARMONY! 镜像",
             Self::Rvt => "RVT 密钥镜像",
             Self::Gpt => "GPT 分区表镜像",
+            Self::SecImage => "Huawei 安全镜像",
             Self::HvbWrapped => "HVB 分区镜像",
             Self::Nve => "Hisi-NV-Partition",
             Self::Cpio => "cpio 归档",
@@ -181,6 +183,13 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         && &gpt_magic == GPT_MAGIC
     {
         return (FileKind::Gpt, "GPT 分区表镜像".to_owned());
+    }
+
+    if common::formats::secimg::probe_image(path).unwrap_or(false) {
+        return (
+            FileKind::SecImage,
+            "Huawei X.509 证书链安全镜像，可查看组件、目标分区和载荷校验信息".to_owned(),
+        );
     }
 
     // EROFS magic at offset 1024

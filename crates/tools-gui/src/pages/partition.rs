@@ -3,6 +3,7 @@ use crate::pages::images::ImageKind;
 use crate::util::{human_size, kv, message_box, section};
 use common::entropy::EntropySummary;
 use common::formats::gpt::GptInfo;
+use common::formats::secimg::SecImageInfo;
 use common::partition::{CertSummary, HarmonySummary, PartitionSummary};
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
@@ -73,7 +74,12 @@ impl PartitionPage {
     fn render_results(&self, ui: &mut egui::Ui) {
         match (&self.summary, &self.entropy_summary) {
             (Some(summary), Some(entropy)) => {
-                if matches!(summary, PartitionSummary::Gpt(_) | PartitionSummary::Rvt(_)) {
+                if matches!(
+                    summary,
+                    PartitionSummary::Gpt(_)
+                        | PartitionSummary::Rvt(_)
+                        | PartitionSummary::SecImage(_)
+                ) {
                     self.render(ui, summary);
                     ui.add_space(10.0);
                     crate::pages::entropy::render_summary(ui, entropy);
@@ -165,6 +171,10 @@ impl PartitionPage {
                 badge_heading(ui, "GPT 分区表", egui::Color32::from_rgb(100, 200, 140));
                 self.render_gpt(ui, gpt);
             }
+            PartitionSummary::SecImage(secimg) => {
+                badge_heading(ui, "Huawei 安全镜像", egui::Color32::from_rgb(230, 170, 40));
+                self.render_secimg(ui, secimg);
+            }
             PartitionSummary::HvbWrapped {
                 footer,
                 cert,
@@ -245,6 +255,81 @@ impl PartitionPage {
         ui.add_space(6.0);
         section(ui, "HVB 证书");
         render_cert(ui, &harmony.cert);
+    }
+
+    fn render_secimg(&self, ui: &mut egui::Ui, secimg: &SecImageInfo) {
+        section(ui, "镜像布局");
+        egui::Grid::new("secimg-layout-grid")
+            .num_columns(2)
+            .spacing([18.0, 6.0])
+            .show(ui, |ui| {
+                kv(ui, "组件名", &secimg.image_name);
+                kv(ui, "目标分区", &secimg.partition_name);
+                kv(ui, "文件大小", human_size(secimg.file_size));
+                kv(
+                    ui,
+                    "证书链大小",
+                    crate::util::hex64(secimg.certificate_chain_size),
+                );
+                kv(ui, "载荷偏移", crate::util::hex64(secimg.payload_offset));
+                kv(ui, "载荷大小", human_size(secimg.payload_size));
+                if let Some(size) = secimg.secondary_size {
+                    kv(ui, "第二声明长度 (OID .69)", human_size(size));
+                }
+                kv(ui, "尾随数据", human_size(secimg.trailing_size));
+                kv(
+                    ui,
+                    "载荷 SHA-256",
+                    if secimg.payload_hash_valid {
+                        "校验通过"
+                    } else {
+                        "不匹配"
+                    },
+                );
+            });
+
+        ui.label(
+            egui::RichText::new(&secimg.declared_payload_sha256)
+                .monospace()
+                .small(),
+        );
+        if !secimg.payload_hash_valid {
+            ui.label(
+                egui::RichText::new(format!("实际值: {}", secimg.actual_payload_sha256))
+                    .monospace()
+                    .small()
+                    .color(egui::Color32::from_rgb(230, 90, 90)),
+            );
+        }
+
+        section(ui, "X.509 证书链");
+        for certificate in &secimg.certificates {
+            ui.label(
+                egui::RichText::new(format!(
+                    "#{}  0x{:X} + 0x{:X}  {}",
+                    certificate.chain_index + 1,
+                    certificate.offset,
+                    certificate.size,
+                    certificate.subject
+                ))
+                .monospace(),
+            );
+            ui.label(
+                egui::RichText::new(format!(
+                    "有效期 {} 至 {}  |  {}",
+                    certificate.not_before,
+                    certificate.not_after,
+                    certificate.signature_algorithm_oid
+                ))
+                .weak()
+                .small(),
+            );
+        }
+
+        for warning in &secimg.warnings {
+            ui.add_space(4.0);
+            message_box(ui, egui::Color32::from_rgb(230, 170, 40), warning);
+        }
     }
 
     fn render_rvt(&self, ui: &mut egui::Ui, rvt: &common::formats::rvt::RvtInfo) {

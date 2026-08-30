@@ -234,6 +234,9 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
         ],
         FileKind::Rvt => vec![("查看 RVT 信息", Page::Images, ActionKind::PartitionInput)],
         FileKind::Gpt => vec![("查看 GPT 分区表", Page::Images, ActionKind::PartitionInput)],
+        FileKind::SecImage => {
+            vec![("查看安全镜像信息", Page::Images, ActionKind::PartitionInput)]
+        }
         FileKind::HvbWrapped => {
             vec![("查看分区信息", Page::Images, ActionKind::PartitionInput)]
         }

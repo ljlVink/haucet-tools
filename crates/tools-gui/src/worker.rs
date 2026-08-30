@@ -276,6 +276,10 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                         info.partition_count()
                     )
                 }
+                Some(partition::PartitionSummary::SecImage(info)) => format!(
+                    "Huawei 安全镜像({} -> {})",
+                    info.image_name, info.partition_name
+                ),
                 Some(partition::PartitionSummary::HvbWrapped { .. }) => {
                     "HVB 包装的分区镜像".to_owned()
                 }

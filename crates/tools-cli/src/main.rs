@@ -39,7 +39,7 @@ enum Command {
         #[command(subcommand)]
         command: CpioCommands,
     },
-    /// Inspect a partition image: HARMONY!/HVB, RVT (rot\0), or GPT ptable contents
+    /// Inspect HARMONY!/HVB, RVT, GPT, or Huawei secure-image contents
     #[command(arg_required_else_help = true)]
     PartitionInfo { image: PathBuf },
     /// Calculate Shannon entropy for a file
