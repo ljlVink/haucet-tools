@@ -95,9 +95,9 @@ impl FastbootPage {
             if app.job_running() {
                 ui.add(egui::Spinner::new().size(16.0));
                 let text = match self.pending {
-                    Some(PendingOp::Status) => "正在检测…",
-                    Some(PendingOp::Reboot) => "正在重启…",
-                    Some(PendingOp::Flash) | None => "任务运行中…",
+                    Some(PendingOp::Status) => "正在检测",
+                    Some(PendingOp::Reboot) => "正在重启",
+                    Some(PendingOp::Flash) | None => "任务运行中",
                 };
                 ui.label(egui::RichText::new(text).weak());
             }
@@ -192,7 +192,7 @@ impl FastbootPage {
             {
                 self.target = target;
             }
-            if ui.button("选择镜像…").clicked()
+            if ui.button("选择镜像").clicked()
                 && let Some(path) = app.pick_file("选择镜像文件", &[("镜像文件", &["img", "bin"])])
             {
                 self.set_image(&path);
@@ -240,7 +240,7 @@ impl FastbootPage {
             });
         }
         if app.job_running() {
-            ui.label(egui::RichText::new("任务运行中…").weak());
+            ui.label(egui::RichText::new("任务运行中").weak());
         }
 
         ui.add_space(10.0);

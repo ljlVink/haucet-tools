@@ -240,7 +240,7 @@ impl CpioPage {
         let busy = self.load_job.is_some();
         ui.add_enabled_ui(!busy, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("打开来源").strong());
+                ui.label(egui::RichText::new("来源类型").strong());
                 for source in [CpioSource::File, CpioSource::Image, CpioSource::Workspace] {
                     ui.selectable_value(&mut self.source, source, source.label());
                 }
@@ -248,6 +248,8 @@ impl CpioPage {
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("打开来源").strong());
+            let field_width = (ui.available_width() - 190.0).max(120.0);
             let path_edit = ui.add_enabled(
                 !busy,
                 egui::TextEdit::singleline(&mut self.path)
@@ -256,12 +258,12 @@ impl CpioPage {
                         CpioSource::Image => "ramdisk 镜像路径",
                         CpioSource::Workspace => "解包工作区目录",
                     })
-                    .desired_width(ui.available_width() - 120.0),
+                    .desired_width(field_width),
             );
             let mut load_requested =
                 path_edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
             if ui
-                .add_enabled(self.load_job.is_none(), egui::Button::new("选择…"))
+                .add_enabled(self.load_job.is_none(), egui::Button::new("选择文件"))
                 .clicked()
             {
                 let picked = match self.source {
@@ -544,7 +546,7 @@ impl CpioPage {
         let busy = self.load_job.is_some();
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(!busy && selection.is_some(), egui::Button::new("提取选中…"))
+                .add_enabled(!busy && selection.is_some(), egui::Button::new("提取选中"))
                 .clicked()
                 && let Some(dir) = app.pick_dir("选择提取目标目录")
             {
@@ -558,7 +560,7 @@ impl CpioPage {
                 }));
             }
             if ui
-                .add_enabled(!busy, egui::Button::new("提取全部…"))
+                .add_enabled(!busy, egui::Button::new("提取全部"))
                 .clicked()
                 && let Some(dir) = app.pick_dir("选择提取目标目录")
             {
@@ -588,7 +590,7 @@ impl CpioPage {
                 self.mark_dirty();
                 self.message = Some((true, format!("已删除 {entry}")));
             }
-            if ui.button("添加文件…").clicked()
+            if ui.button("添加文件").clicked()
                 && let Some(file) = app.pick_file("选择要添加的文件", &[])
             {
                 let suggested = file
@@ -710,7 +712,7 @@ impl CpioPage {
                 }));
             }
             if ui
-                .add_enabled(!busy, egui::Button::new("另存为…"))
+                .add_enabled(!busy, egui::Button::new("另存为"))
                 .clicked()
                 && let Some(path) = app.pick_save("保存 cpio 文件", "ramdisk.cpio")
             {

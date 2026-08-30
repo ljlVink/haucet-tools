@@ -168,7 +168,7 @@ impl ErofsPage {
             if response.changed() {
                 self.update_unpack_output();
             }
-            if ui.button("选择文件…").clicked()
+            if ui.button("选择文件").clicked()
                 && let Some(path) = app.pick_file("选择 EROFS 镜像", &[("镜像", &["img"])])
             {
                 self.select_unpack_image(path.display().to_string());
@@ -185,7 +185,7 @@ impl ErofsPage {
                 egui::TextEdit::singleline(&mut self.unpack.output)
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked()
+            if ui.button("选择目录").clicked()
                 && let Some(dir) = app.pick_dir("选择输出目录")
             {
                 self.unpack.output = dir.display().to_string();
@@ -226,7 +226,7 @@ impl ErofsPage {
                     .hint_text("包含 haucet-erofs.json 的目录")
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked()
+            if ui.button("选择目录").clicked()
                 && let Some(dir) = app.pick_dir("选择 EROFS 工作区")
             {
                 self.select_workspace(dir.display().to_string());
@@ -279,7 +279,7 @@ impl ErofsPage {
                     .hint_text("例如 new-system.img")
                     .desired_width(ui.available_width() - 260.0),
             );
-            if ui.button("选择保存位置…").clicked()
+            if ui.button("选择保存位置").clicked()
                 && let Some(path) = app.pick_save("保存打包后的镜像", "new-partition.img")
             {
                 self.repack.output = path.display().to_string();

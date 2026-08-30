@@ -51,7 +51,7 @@ impl PartitionPage {
             {
                 self.select_input(self.input.clone());
             }
-            if ui.button("选择文件…").clicked()
+            if ui.button("选择文件").clicked()
                 && let Some(path) = app.pick_file("选择镜像或文件", &[])
             {
                 self.select_input(path.display().to_string());
@@ -414,7 +414,7 @@ impl PartitionPage {
                                 .chars()
                                 .take(16)
                                 .collect::<String>();
-                            ui.label(egui::RichText::new(format!("{short}…")).monospace().weak())
+                            ui.label(egui::RichText::new(format!("{short}")).monospace().weak())
                                 .on_hover_text(&descriptor.pubkey_sha256);
                         });
                         row.col(|ui| match &descriptor.backup_equals_main {

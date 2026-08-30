@@ -166,7 +166,7 @@ impl RamdiskPage {
             if response.changed() {
                 self.update_unpack_output();
             }
-            if ui.button("选择文件…").clicked()
+            if ui.button("选择文件").clicked()
                 && let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])])
             {
                 self.select_unpack_image(path.display().to_string());
@@ -180,7 +180,7 @@ impl RamdiskPage {
                 egui::TextEdit::singleline(&mut self.unpack.output)
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录…").clicked()
+            if ui.button("选择目录").clicked()
                 && let Some(dir) = app.pick_dir("选择输出目录")
             {
                 self.unpack.output = dir.display().to_string();
@@ -220,7 +220,7 @@ impl RamdiskPage {
             "工作区目录",
             &mut self.repack.workspace,
             true,
-            "选择目录…",
+            "选择目录",
         );
         ui.add_space(6.0);
         input_path_edit(
@@ -229,7 +229,7 @@ impl RamdiskPage {
             "原始镜像",
             &mut self.repack.original,
             false,
-            "选择文件…",
+            "选择文件",
         );
         ui.add_space(6.0);
         save_path_edit(
@@ -237,7 +237,7 @@ impl RamdiskPage {
             app,
             "输出镜像",
             &mut self.repack.output,
-            "选择保存位置…",
+            "选择保存位置",
             "ramdisk-repacked.img",
         );
         ui.add_space(8.0);
@@ -280,7 +280,7 @@ impl RamdiskPage {
                 self.update_patch_output();
                 self.probe_requested = std::path::Path::new(self.patch.image.trim()).is_file();
             }
-            if ui.button("选择文件…").clicked()
+            if ui.button("选择文件").clicked()
                 && let Some(path) = app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])])
             {
                 self.select_patch_image(path.display().to_string());
@@ -356,7 +356,7 @@ impl RamdiskPage {
             "新 init_early 二进制",
             &mut self.patch.binary,
             false,
-            "选择文件…",
+            "选择文件",
         );
         ui.add_space(6.0);
         save_path_edit(
@@ -364,7 +364,7 @@ impl RamdiskPage {
             app,
             "输出镜像",
             &mut self.patch.output,
-            "选择保存位置…",
+            "选择保存位置",
             "ramdisk-patched.img",
         );
         ui.add_space(8.0);

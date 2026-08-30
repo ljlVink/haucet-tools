@@ -111,7 +111,7 @@ impl PackagePage {
                         });
                     }
                     if app.job_running() {
-                        ui.label(egui::RichText::new("任务进行中…").weak());
+                        ui.label(egui::RichText::new("任务进行中").weak());
                     }
                 });
 

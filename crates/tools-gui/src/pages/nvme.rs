@@ -75,7 +75,7 @@ impl NvmePage {
     fn image_row(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("镜像文件").strong());
-            let field_width = (ui.available_width() - 112.0).max(120.0);
+            let field_width = (ui.available_width() - 190.0).max(120.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.image)
                     .hint_text("选择 NVME 分区镜像")

@@ -195,21 +195,9 @@ impl OemInfoPage {
                 self.request_inspection(!self.input.trim().is_empty());
             }
             if ui.button("选择文件").clicked()
-                && let Some(path) =
-                    app.pick_file("选择 OEMINFO 镜像", &[("OEMINFO 镜像", &["img", "bin"])])
+                && let Some(path) = app.pick_file("选择 OEMINFO 镜像", &[])
             {
                 self.select_input(path.display().to_string());
-            }
-            if ui
-                .add_enabled(!self.input.trim().is_empty(), egui::Button::new("重新解析"))
-                .clicked()
-            {
-                self.summary = None;
-                self.error = None;
-                self.export_result = None;
-                self.selected_block = None;
-                self.clear_preview();
-                self.request_inspection(true);
             }
         });
     }
