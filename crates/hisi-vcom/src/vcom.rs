@@ -74,8 +74,8 @@ pub fn write_and_verify(
     transport.write_all(command, ACK_TIMEOUT)?;
     let mut ack = [0u8; 1];
     transport.read_raw_timeout(&mut ack, ACK_TIMEOUT)?;
-    log(&format!("  ACK byte: 0x{:02X}", ack[0]));
     if ack[0] != 0xAA {
+        log(&format!("  Unexpected ACK byte: 0x{:02X}", ack[0]));
         return Err(Error::BadAck {
             expected: 0xAA,
             actual: ack[0],
