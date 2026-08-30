@@ -426,14 +426,6 @@ fn apply_content_text_style(ui: &mut egui::Ui) {
     text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(13.0));
 }
 
-impl Default for HaucetApp {
-    fn default() -> Self {
-        // Only used as a fallback for mem::take; real construction goes
-        // through new().
-        unreachable!("HaucetApp is constructed through new()")
-    }
-}
-
 fn job_label(op: &JobOp) -> &'static str {
     use crate::worker::JobOp::*;
     match op {
@@ -441,8 +433,6 @@ fn job_label(op: &JobOp) -> &'static str {
         NvmeEdit { .. } => "Edit NVMe / NVE",
         PackageInspect { .. } => "读取更新包内容",
         PackageUnpack { .. } => "解包更新包",
-        UpdateList { .. } => "读取 update.bin 索引",
-        UpdateUnpack { .. } => "解包 update.bin",
         ErofsUnpack { .. } => "解包 EROFS 镜像",
         ErofsRepack { .. } => "重新打包 EROFS 镜像",
         RamdiskUnpack { .. } => "解包 ramdisk",
@@ -450,7 +440,6 @@ fn job_label(op: &JobOp) -> &'static str {
         RamdiskPatch { .. } => "给 ramdisk 打补丁",
         RamdiskProbe { .. } => "检查 ramdisk 镜像",
         PartitionInfo { .. } => "读取分区信息",
-        FileEntropy { .. } => "计算文件信息熵",
         FastbootStatus { .. } => "检测 fastboot 设备",
         FastbootReboot { .. } => "重启 fastboot 设备",
         FastbootFlash { .. } => "刷写 fastboot 镜像",
