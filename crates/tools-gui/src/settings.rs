@@ -4,32 +4,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub last_dir: Option<String>,
-    pub last_output: Option<String>,
     pub recent: Vec<String>,
-    pub force: bool,
-    pub allow_grow: bool,
-    pub all_erofs: bool,
-    pub layout: String,
-    pub cpio_extract_dir: Option<String>,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            last_dir: None,
-            last_output: None,
-            recent: Vec::new(),
-            force: false,
-            allow_grow: false,
-            all_erofs: false,
-            layout: "auto".to_owned(),
-            cpio_extract_dir: None,
-        }
-    }
 }
 
 impl Settings {
