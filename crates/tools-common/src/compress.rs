@@ -118,6 +118,10 @@ impl<W: Write> Write for LZ4BlockEncoder<W> {
 impl<W: Write> WriteFinish<W> for LZ4BlockEncoder<W> {
     fn finish(mut self: Box<Self>) -> Result<W> {
         self.flush_block()?;
+        if !self.started {
+            self.write.write_all(&LZ4_MAGIC.to_le_bytes())?;
+            self.started = true;
+        }
         if self.is_lg {
             let total = u32::try_from(self.total).map_err(|_| {
                 std::io::Error::new(
@@ -197,7 +201,11 @@ impl<R: Read> Read for LZ4BlockDecoder<R> {
             self.read.read_exact(&mut block_size_buf[1..])?;
             let mut block_size = u32::from_le_bytes(block_size_buf);
             if block_size == LZ4_MAGIC {
-                self.read.read_exact(&mut block_size_buf)?;
+                let first = self.read.read(&mut block_size_buf[..1])?;
+                if first == 0 {
+                    return self.finish_stream();
+                }
+                self.read.read_exact(&mut block_size_buf[1..])?;
                 block_size = u32::from_le_bytes(block_size_buf);
             }
             let block_size = block_size as usize;

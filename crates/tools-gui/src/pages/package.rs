@@ -452,4 +452,3 @@ fn component_type_label(component_type: u8) -> String {
         other => format!("类型 {other}"),
     }
 }
-

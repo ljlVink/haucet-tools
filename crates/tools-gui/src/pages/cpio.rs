@@ -628,9 +628,9 @@ impl CpioPage {
                         ui.add(egui::TextEdit::singleline(&mut self.add_mode).desired_width(64.0));
                         if ui.button("确认添加").clicked() {
                             let mode = cpio::parse_cpio_mode(self.add_mode.trim());
-                            let target = self.add_target.trim().to_owned();
-                            match (mode, self.pending_add.clone()) {
-                                (Ok(mode), Some(file)) if !target.is_empty() => {
+                            let target = validate_archive_path(&self.add_target);
+                            match (mode, target, self.pending_add.clone()) {
+                                (Ok(mode), Ok(target), Some(file)) => {
                                     match loaded.cpio.add(mode, &target, &file) {
                                         Ok(()) => {
                                             loaded.rebuild_tree();
@@ -645,12 +645,14 @@ impl CpioPage {
                                         }
                                     }
                                 }
-                                (Err(error), _) => {
+                                (Err(error), _, _) => {
                                     self.message = Some((false, format!("无效的模式: {error}")));
                                 }
-                                _ => {
-                                    self.message =
-                                        Some((false, "请选择文件并填写归档路径".to_owned()));
+                                (_, Err(error), _) => {
+                                    self.message = Some((false, error));
+                                }
+                                (_, _, None) => {
+                                    self.message = Some((false, "请选择要添加的文件".to_owned()));
                                 }
                             }
                         }
@@ -673,13 +675,17 @@ impl CpioPage {
                                 .desired_width(240.0),
                         );
                         if ui.button("创建").clicked() {
-                            let target = self.mkdir_target.trim().to_owned();
-                            if !target.is_empty() {
-                                loaded.cpio.mkdir(0o750, &target);
-                                loaded.rebuild_tree();
-                                self.mark_dirty();
-                                self.message = Some((true, format!("已创建目录 {target}")));
-                                self.mkdir_target.clear();
+                            match validate_archive_path(&self.mkdir_target) {
+                                Ok(target) => {
+                                    loaded.cpio.mkdir(0o750, &target);
+                                    loaded.rebuild_tree();
+                                    self.mark_dirty();
+                                    self.message = Some((true, format!("已创建目录 {target}")));
+                                    self.mkdir_target.clear();
+                                }
+                                Err(error) => {
+                                    self.message = Some((false, error));
+                                }
                             }
                         }
                     });
@@ -781,4 +787,16 @@ fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<u
         count += 1;
     }
     Ok(count)
+}
+
+fn validate_archive_path(value: &str) -> std::result::Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("归档路径不能为空".to_owned());
+    }
+    if value.contains('\\') || common::fs_util::safe_join(std::path::Path::new("."), value).is_err()
+    {
+        return Err(format!("不安全的 cpio 条目路径: {value:?}"));
+    }
+    Ok(cpio::norm_path(value))
 }

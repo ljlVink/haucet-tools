@@ -29,17 +29,23 @@ impl Settings {
     }
 
     pub fn remember_path(&mut self, path: &std::path::Path) {
+        if path.is_dir() {
+            self.last_dir = Some(path.display().to_string());
+            return;
+        }
+
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            self.last_dir = Some(parent.display().to_string());
+        }
+
         if path.is_file() {
-            let parent = path.parent().map(|p| p.display().to_string());
-            if let Some(parent) = parent {
-                self.last_dir = Some(parent);
-            }
             let text = path.display().to_string();
             self.recent.retain(|entry| entry != &text);
             self.recent.insert(0, text);
             self.recent.truncate(8);
-        } else if path.is_dir() {
-            self.last_dir = Some(path.display().to_string());
         }
     }
 }

@@ -3,7 +3,7 @@ name = "hisi-vcom"
 version = "0.1.0"
 edition = "2021"
 description = "HiSilicon / Huawei Kirin bootrom VCOM loader upload in pure Rust (nusb)"
-license = "MIT OR Apache-2.0"
+license.workspace = true
 keywords = ["huawei", "kirin", "hisilicon", "vcom", "usb"]
 categories = ["hardware-support", "command-line-utilities"]
 

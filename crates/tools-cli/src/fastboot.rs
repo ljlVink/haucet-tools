@@ -9,14 +9,8 @@ pub async fn devices() -> Result<()> {
     let mut found = false;
     for info in devices {
         found = true;
-        let product = info
-            .product_string()
-            .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
-            .unwrap_or_default();
-        let serial = info
-            .serial_number()
-            .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
-            .unwrap_or_default();
+        let product = display_device_string(info.product_string());
+        let serial = display_device_string(info.serial_number());
         println!(
             "{:>3}:{:<3}  {:#06x}:{:#06x}  {}  serial={}",
             info.bus_id(),
@@ -82,10 +76,7 @@ async fn open_only() -> Result<NusbFastBoot> {
         .await
         .context("failed to enumerate USB devices")?;
     let info = require_single_device(devices)?;
-    let product = info
-        .product_string()
-        .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
-        .unwrap_or_default();
+    let product = display_device_string(info.product_string());
     eprintln!(
         "Using device {}:{} ({})",
         info.bus_id(),
@@ -95,4 +86,10 @@ async fn open_only() -> Result<NusbFastBoot> {
     NusbFastBoot::from_info(&info)
         .await
         .context("failed to open fastboot device (administrator privileges or a WinUSB driver may be required)")
+}
+
+fn display_device_string(value: Option<&str>) -> String {
+    value
+        .map(|value| clean_device_string(value).unwrap_or_else(|| value.to_owned()))
+        .unwrap_or_default()
 }

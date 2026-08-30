@@ -6,6 +6,8 @@ use crate::worker::JobOp;
 use eframe::egui;
 use std::path::PathBuf;
 
+const PROJECT_LICENSE_SPDX: &str = "GPL-3.0-only";
+
 pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
@@ -349,7 +351,7 @@ impl HaucetApp {
                         .weak()
                         .size(11.0),
                 );
-                ui.label(egui::RichText::new("GPL 3.0").weak().size(11.0));
+                ui.label(egui::RichText::new(PROJECT_LICENSE_SPDX).weak().size(11.0));
                 ui.hyperlink_to(
                     egui::RichText::new("GitHub: github.com/ljlVink/haucet-tools")
                         .weak()

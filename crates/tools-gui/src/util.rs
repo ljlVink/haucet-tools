@@ -76,7 +76,7 @@ pub fn strip_ansi(text: &str) -> String {
             if chars.clone().next() == Some('[') {
                 chars.next();
                 for next in chars.by_ref() {
-                    if next.is_ascii_alphabetic() {
+                    if ('@'..='~').contains(&next) {
                         break;
                     }
                 }

@@ -110,6 +110,9 @@ pub fn parse_image(path: &Path) -> io::Result<RvtInfo> {
     let (rvt_data, expected_size, hvb_wrapped, footer, cert) = if has_footer(&data) {
         let footer_pos = data.len() - HVB_FOOTER_SIZE;
         let footer = HvbFooter::parse(&data[footer_pos..])?;
+        if footer.partition_size != data.len() as u64 {
+            return Err(invalid("HVB partition size does not match the file length"));
+        }
         let cert_start = usize::try_from(footer.cert_offset)
             .map_err(|_| invalid("HVB cert offset does not fit usize"))?;
         let cert_size = usize::try_from(footer.cert_size)
@@ -117,15 +120,15 @@ pub fn parse_image(path: &Path) -> io::Result<RvtInfo> {
         let cert_end = cert_start
             .checked_add(cert_size)
             .ok_or_else(|| invalid("HVB cert range overflow"))?;
-        if cert_end > data.len() {
-            return Err(invalid("HVB cert range is outside the image"));
+        if cert_end > footer_pos {
+            return Err(invalid("HVB cert range overlaps the footer"));
         }
-        let cert = HvbCert::parse(&data[cert_start..cert_end])?;
         let image_size = usize::try_from(footer.image_size)
             .map_err(|_| invalid("HVB image size does not fit usize"))?;
-        if image_size > data.len() {
-            return Err(invalid("HVB image segment is outside the file"));
+        if image_size > cert_start {
+            return Err(invalid("HVB image segment overlaps the certificate"));
         }
+        let cert = HvbCert::parse(&data[cert_start..cert_end])?;
         (
             &data[..image_size],
             image_size,

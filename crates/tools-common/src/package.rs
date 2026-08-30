@@ -15,6 +15,7 @@ use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::str::FromStr;
 use zip::ZipArchive;
+use zip::result::ZipError;
 
 const HEADER_LEN: usize = 180;
 const COMPINFO_LEN_OFFSET: usize = 178;
@@ -395,7 +396,7 @@ struct PackageManifest {
 }
 
 pub fn inspect(input: &Path, layout: UpdateLayout) -> Result<PackageIndex> {
-    if is_update_bin_file(input) {
+    if is_update_bin_file(input)? {
         let file = File::open(input)
             .with_context(|| format!("opening update package {}", input.display()))?;
         let length = file.metadata()?.len();
@@ -504,7 +505,7 @@ fn unpack_full_with_tools_window(
     fs::create_dir_all(&images_dir)?;
     fs::create_dir_all(&partitions_dir)?;
 
-    let components = if is_update_bin_file(input) {
+    let components = if is_update_bin_file(input)? {
         let file = File::open(input)
             .with_context(|| format!("opening update package {}", input.display()))?;
         let size = file.metadata()?.len();
@@ -600,11 +601,14 @@ fn prepare_output(out: &Path, input: &Path, force: bool) -> Result<()> {
     fs_util::prepare_dir_excluding(out, "output directory", force, &[input])
 }
 
-fn is_update_bin_file(input: &Path) -> bool {
-    input
-        .extension()
-        .map(|extension| extension.to_string_lossy().eq_ignore_ascii_case("bin"))
-        .unwrap_or(false)
+fn is_update_bin_file(input: &Path) -> Result<bool> {
+    let file =
+        File::open(input).with_context(|| format!("opening Huawei package {}", input.display()))?;
+    match ZipArchive::new(file) {
+        Ok(_) => Ok(false),
+        Err(ZipError::InvalidArchive(_)) => Ok(true),
+        Err(error) => Err(error).context("probing ZIP/ZIP64 archive"),
+    }
 }
 
 fn extract_zip_entry<R: io::Read>(
