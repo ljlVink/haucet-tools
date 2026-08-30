@@ -4,10 +4,10 @@ use crate::util::{human_size, message_box, mode_string};
 use common::compress::decompress_vec;
 use common::formats::cpio::{self, Cpio, S_IFDIR, S_IFMT};
 use common::formats::harmony::HvbFrame;
-use common::formats::header::check_fmt;
+use common::formats::header::check_fmt_full;
 use eframe::egui;
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -44,6 +44,9 @@ pub struct CpioPage {
     pub add_mode: String,
     pub mkdir_target: String,
     pub pending_add: Option<String>,
+    load_requested: bool,
+    active_load: Option<LoadRequest>,
+    queued_load: Option<LoadRequest>,
 }
 
 pub struct Loaded {
@@ -78,11 +81,22 @@ impl Loaded {
     fn rebuild_tree(&mut self) {
         let mut children: HashMap<String, Vec<String>> = HashMap::new();
         for path in self.cpio.entries.keys() {
-            let (parent, name) = split_path(path);
-            children.entry(parent).or_default().push(name);
+            let mut parent = String::new();
+            for name in path.split('/').filter(|part| !part.is_empty()) {
+                children
+                    .entry(parent.clone())
+                    .or_default()
+                    .push(name.to_owned());
+                parent = if parent.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{parent}/{name}")
+                };
+            }
         }
         for names in children.values_mut() {
             names.sort();
+            names.dedup();
         }
         self.children = children;
     }
@@ -105,13 +119,22 @@ impl Loaded {
 }
 
 enum LocalOutcome {
-    Loaded(Loaded),
+    Loaded {
+        request: LoadRequest,
+        loaded: Loaded,
+    },
     Done(String),
     Saved {
         path: String,
         revision: u64,
         update_source: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LoadRequest {
+    source: CpioSource,
+    path: String,
 }
 
 pub struct LocalJob {
@@ -129,7 +152,11 @@ impl std::fmt::Debug for LocalJob {
 
 impl LocalJob {
     fn poll(&mut self) -> Option<std::result::Result<LocalOutcome, String>> {
-        self.rx.try_recv().ok()
+        match self.rx.try_recv() {
+            Ok(result) => Some(result),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => Some(Err(format!("{}任务线程意外退出", self.label))),
+        }
     }
 }
 
@@ -145,13 +172,6 @@ where
     LocalJob { rx, label }
 }
 
-fn split_path(path: &str) -> (String, String) {
-    match path.rfind('/') {
-        Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
-        None => (String::new(), path.to_owned()),
-    }
-}
-
 fn is_harmony_image(path: &std::path::Path) -> bool {
     use std::io::Read;
     let Ok(mut file) = std::fs::File::open(path) else {
@@ -162,8 +182,18 @@ fn is_harmony_image(path: &std::path::Path) -> bool {
 }
 
 impl CpioPage {
+    pub fn select_input(&mut self, path: String) {
+        self.source = CpioSource::File;
+        self.path = path;
+        self.load_requested = true;
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         self.poll_local_job();
+        if self.load_requested {
+            self.load_requested = false;
+            self.request_load(app);
+        }
         let mut loaded = self.loaded.take();
 
         egui::ScrollArea::vertical()
@@ -180,6 +210,9 @@ impl CpioPage {
                 ui.add_space(14.0);
 
                 self.open_row(ui, app);
+                if self.active_load.is_some() || self.queued_load.is_some() {
+                    loaded = None;
+                }
                 ui.add_space(6.0);
                 if let Some(loaded) = &loaded {
                     self.summary_row(ui, loaded);
@@ -200,19 +233,31 @@ impl CpioPage {
                 ui.add_space(20.0);
             });
 
-        self.loaded = loaded;
+        self.loaded = if self.active_load.is_some() || self.queued_load.is_some() {
+            None
+        } else {
+            loaded
+        };
+        if self.load_job.is_some() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
     }
 
     fn open_row(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("打开来源").strong());
-            for source in [CpioSource::File, CpioSource::Image, CpioSource::Workspace] {
-                ui.selectable_value(&mut self.source, source, source.label());
-            }
+        let busy = self.load_job.is_some();
+        ui.add_enabled_ui(!busy, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("打开来源").strong());
+                for source in [CpioSource::File, CpioSource::Image, CpioSource::Workspace] {
+                    ui.selectable_value(&mut self.source, source, source.label());
+                }
+            });
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let path_edit = ui.add(
+            let path_edit = ui.add_enabled(
+                !busy,
                 egui::TextEdit::singleline(&mut self.path)
                     .hint_text(match self.source {
                         CpioSource::File => "ramdisk.cpio 文件路径",
@@ -238,7 +283,7 @@ impl CpioPage {
                 }
             }
             if load_requested {
-                self.start_load(app);
+                self.request_load(app);
             }
         });
         let drops = app.take_drops(ui.ctx());
@@ -248,24 +293,43 @@ impl CpioPage {
                 self.source = CpioSource::Workspace;
             } else if is_harmony_image(path) {
                 self.source = CpioSource::Image;
+            } else {
+                self.source = CpioSource::File;
             }
-            self.start_load(app);
+            self.request_load(app);
         }
     }
 
-    fn start_load(&mut self, app: &mut HaucetApp) {
-        let source = self.source;
-        let path = self.path.trim().to_owned();
-        if path.is_empty() || self.load_job.is_some() {
+    fn request_load(&mut self, app: &mut HaucetApp) {
+        let request = LoadRequest {
+            source: self.source,
+            path: self.path.trim().to_owned(),
+        };
+        if request.path.is_empty() {
             return;
         }
-        app.settings.remember_path(std::path::Path::new(&path));
+        app.settings
+            .remember_path(std::path::Path::new(&request.path));
+        if self.load_job.is_some() {
+            self.queued_load = Some(request);
+            return;
+        }
+        self.begin_load(request);
+    }
+
+    fn begin_load(&mut self, request: LoadRequest) {
+        self.source = request.source;
+        self.path = request.path.clone();
         self.loaded = None;
         self.selection = None;
         self.message = None;
         self.dirty = false;
         self.revision = 0;
+        self.active_load = Some(request.clone());
+        let worker_request = request;
         self.load_job = Some(spawn_local("加载 cpio", move || {
+            let source = worker_request.source;
+            let path = worker_request.path.clone();
             let (cpio, from_image, source_path) = match source {
                 CpioSource::File => (Cpio::load_from_file(&path)?, false, path.clone()),
                 CpioSource::Workspace => {
@@ -279,7 +343,7 @@ impl CpioPage {
                     let frame = HvbFrame::load(std::path::Path::new(&path))?;
                     let payload = frame.extract_image_payload();
                     anyhow::ensure!(!payload.is_empty(), "镜像内没有负载数据");
-                    let fmt = check_fmt(payload);
+                    let fmt = check_fmt_full(payload);
                     let bytes = if fmt.is_compressed() {
                         decompress_vec(fmt, payload).map_err(std::io::Error::other)?
                     } else {
@@ -289,7 +353,10 @@ impl CpioPage {
                 }
             };
             let loaded = Loaded::new(cpio, source_path, from_image);
-            Ok(LocalOutcome::Loaded(loaded))
+            Ok(LocalOutcome::Loaded {
+                request: worker_request,
+                loaded,
+            })
         }));
     }
 
@@ -302,17 +369,26 @@ impl CpioPage {
         };
         let label = job.label;
         self.load_job = None;
+        self.active_load = None;
         match result {
-            Ok(LocalOutcome::Loaded(loaded)) => {
-                self.message = Some((
-                    true,
-                    format!(
-                        "已加载 {} 个条目(来源: {})",
-                        loaded.cpio.entries.len(),
-                        label
-                    ),
-                ));
-                self.loaded = Some(loaded);
+            Ok(LocalOutcome::Loaded { request, loaded }) => {
+                let current = LoadRequest {
+                    source: self.source,
+                    path: self.path.trim().to_owned(),
+                };
+                if request == current {
+                    self.message = Some((
+                        true,
+                        format!(
+                            "已加载 {} 个条目(来源: {})",
+                            loaded.cpio.entries.len(),
+                            label
+                        ),
+                    ));
+                    self.loaded = Some(loaded);
+                } else {
+                    self.message = Some((false, "已忽略过期的 cpio 加载结果".to_owned()));
+                }
             }
             Ok(LocalOutcome::Done(text)) => {
                 self.message = Some((true, text));
@@ -339,6 +415,9 @@ impl CpioPage {
                 self.message = Some((false, error));
             }
         }
+        if let Some(request) = self.queued_load.take() {
+            self.begin_load(request);
+        }
     }
 
     fn summary_row(&self, ui: &mut egui::Ui, loaded: &Loaded) {
@@ -347,18 +426,20 @@ impl CpioPage {
             ui.label(egui::RichText::new(format!("{} 个条目 · {} 个目录 ", count, dirs,)).weak());
             ui.separator();
             ui.label(egui::RichText::new("补丁状态").weak());
-            if loaded.cpio.exists(".backup/init_early") {
-                badge_text(ui, "已打过补丁", egui::Color32::from_rgb(230, 170, 40));
-            } else if loaded.cpio.exists("bin/init_early") {
-                badge_text(
-                    ui,
-                    "原厂(bin/init_early 存在)",
-                    egui::Color32::from_rgb(90, 200, 120),
-                );
-            } else if loaded.cpio.exists("init") {
-                badge_text(ui, "原厂(init 存在)", egui::Color32::from_rgb(90, 200, 120));
-            } else {
-                badge_text(ui, "未知布局", egui::Color32::from_rgb(230, 170, 40));
+            match common::ramdisk::patch_status(&loaded.cpio) {
+                common::ramdisk::RamdiskPatchStatus::Patched => {
+                    badge_text(ui, "已打过补丁", egui::Color32::from_rgb(230, 170, 40));
+                }
+                common::ramdisk::RamdiskPatchStatus::Patchable => {
+                    badge_text(
+                        ui,
+                        "原厂(bin/init_early 存在)",
+                        egui::Color32::from_rgb(90, 200, 120),
+                    );
+                }
+                common::ramdisk::RamdiskPatchStatus::Unsupported => {
+                    badge_text(ui, "未知布局", egui::Color32::from_rgb(230, 170, 40));
+                }
             }
             if self.dirty {
                 ui.separator();
@@ -445,7 +526,8 @@ impl CpioPage {
                 .entries
                 .get(&full)
                 .map(|entry| entry.mode & S_IFMT == S_IFDIR)
-                .unwrap_or(false);
+                .unwrap_or(false)
+                || loaded.children.contains_key(&full);
             if is_dir {
                 let default_open = self.expand || dir.is_empty();
                 egui::CollapsingHeader::new(format!("📁 {name}"))
@@ -692,8 +774,9 @@ impl CpioPage {
 fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<usize> {
     let mut count = 0;
     for path in paths {
-        let output = format!("{dir}/{path}");
-        cpio.extract_entry(path, &output)
+        let output = common::fs_util::safe_join(std::path::Path::new(dir), path)
+            .map_err(|error| anyhow::anyhow!("不安全的 cpio 条目路径 {path:?}: {error:#}"))?;
+        cpio.extract_entry(path, &output.display().to_string())
             .map_err(|error| anyhow::anyhow!("提取 {path} 失败: {error}"))?;
         count += 1;
     }

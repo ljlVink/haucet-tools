@@ -1,11 +1,28 @@
 use crate::compress::{compress_vec, decompress_vec};
 use crate::formats::cpio::Cpio;
 use crate::formats::harmony::HvbFrame;
-use crate::formats::header::{FileFormat, check_fmt};
+use crate::formats::header::{FileFormat, check_fmt_full};
 use serde_json::json;
 use std::fs;
 use std::io;
 use std::path::Path;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RamdiskPatchStatus {
+    Patched,
+    Patchable,
+    Unsupported,
+}
+
+pub fn patch_status(cpio: &Cpio) -> RamdiskPatchStatus {
+    if cpio.exists(".backup/init_early") {
+        RamdiskPatchStatus::Patched
+    } else if cpio.exists("bin/init_early") {
+        RamdiskPatchStatus::Patchable
+    } else {
+        RamdiskPatchStatus::Unsupported
+    }
+}
 
 fn rebuild_image(
     frame: &mut HvbFrame,
@@ -13,7 +30,7 @@ fn rebuild_image(
     cpio_bytes: &[u8],
     out_path: &Path,
 ) -> io::Result<()> {
-    let fmt = check_fmt(orig_payload);
+    let fmt = check_fmt_full(orig_payload);
     if !fmt.is_compressed() && !matches!(fmt, FileFormat::RAW) {
         eprintln!("WARN: original payload format is {fmt}; falling back to gzip");
     }
@@ -27,11 +44,12 @@ fn rebuild_image(
     let new_payload = compress_vec(use_fmt, cpio_bytes)?;
     eprintln!("Compressed payload: {} bytes", new_payload.len());
 
-    frame.rebuild(&new_payload);
+    frame.rebuild(&new_payload)?;
     eprintln!(
         "New image_size={:#x}, cert_offset={:#x}, partition_size={:#x}",
         frame.footer.image_size, frame.footer.cert_offset, frame.footer.partition_size
     );
+    ensure_within_cert_limit(frame)?;
     frame.write(out_path)?;
     eprintln!(
         "Wrote {} ({} bytes)",
@@ -45,7 +63,7 @@ pub fn patch(image_path: &Path, hsu_path: &Path, out_path: &Path) -> io::Result<
     let mut frame = HvbFrame::load(image_path)?;
     let orig_payload = frame.extract_image_payload().to_vec();
 
-    let fmt = check_fmt(&orig_payload);
+    let fmt = check_fmt_full(&orig_payload);
     let cpio_bytes = if fmt.is_compressed() {
         decompress_vec(fmt, &orig_payload)?
     } else {
@@ -54,17 +72,20 @@ pub fn patch(image_path: &Path, hsu_path: &Path, out_path: &Path) -> io::Result<
 
     let mut cpio = Cpio::load_from_data(&cpio_bytes)?;
 
-    if cpio.exists(".backup/init_early") {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "image already patched (/.backup/init_early exists)",
-        ));
-    }
-    if !cpio.exists("bin/init_early") {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "bin/init_early not found in ramdisk; unsupported layout",
-        ));
+    match patch_status(&cpio) {
+        RamdiskPatchStatus::Patched => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "image already patched (/.backup/init_early exists)",
+            ));
+        }
+        RamdiskPatchStatus::Unsupported => {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "bin/init_early not found in ramdisk; unsupported layout",
+            ));
+        }
+        RamdiskPatchStatus::Patchable => {}
     }
 
     eprintln!("Patching ramdisk:");
@@ -89,19 +110,6 @@ pub fn patch(image_path: &Path, hsu_path: &Path, out_path: &Path) -> io::Result<
 
     rebuild_image(&mut frame, &orig_payload, &out_cpio, out_path)?;
 
-    let orig_len = frame.cert.image_original_len;
-    let new_len = frame.footer.image_size;
-    if new_len > orig_len {
-        eprintln!(
-            "ERROR: new image_size ({new_len:#x}) exceeds cert image_original_len ({orig_len:#x}); \
-             device will truncate the payload and fail to boot. Slim the ramdisk further."
-        );
-        return Err(io::Error::new(
-            io::ErrorKind::FileTooLarge,
-            "payload exceeds cert limit",
-        ));
-    }
-    eprintln!("  size check OK: {new_len:#x} <= {orig_len:#x}");
     Ok(())
 }
 
@@ -122,7 +130,7 @@ pub fn unpack(image_path: &Path, workspace: &Path) -> io::Result<()> {
         payload.len()
     );
 
-    let fmt = check_fmt(payload);
+    let fmt = check_fmt_full(payload);
     eprintln!("Detected payload format: {fmt}");
     let cpio_bytes = if fmt.is_compressed() {
         decompress_vec(fmt, payload)?
@@ -165,6 +173,19 @@ fn path_str(path: &Path) -> io::Result<&str> {
             format!("path is not valid UTF-8: {}", path.display()),
         )
     })
+}
+
+fn ensure_within_cert_limit(frame: &HvbFrame) -> io::Result<()> {
+    let limit = frame.cert.image_original_len;
+    let image_size = frame.footer.image_size;
+    if image_size > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::FileTooLarge,
+            format!("rebuilt image size {image_size:#x} exceeds certificate limit {limit:#x}"),
+        ));
+    }
+    eprintln!("  size check OK: {image_size:#x} <= {limit:#x}");
+    Ok(())
 }
 
 fn frame_to_json(frame: &HvbFrame) -> String {

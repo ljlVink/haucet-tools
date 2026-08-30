@@ -1,5 +1,5 @@
 use crate::formats::gpt::{self, GptInfo};
-use crate::formats::harmony::HvbFrame;
+use crate::formats::harmony::{HARMONY_MAGIC, HvbFrame};
 use crate::formats::hvb::{HvbCert, HvbFooter, HvbWrapper};
 use crate::formats::rvt;
 use serde::{Deserialize, Serialize};
@@ -73,19 +73,16 @@ pub fn info(image: &Path) -> io::Result<()> {
 }
 
 pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
-    match HvbFrame::load(image) {
-        Ok(frame) => {
-            return Ok(PartitionSummary::Harmony(HarmonySummary {
-                hdr_size: frame.harmony.hdr_size,
-                image_size: frame.harmony.image_size,
-                flags: frame.harmony.flags,
-                buildvariant: frame.harmony.buildvariant.clone(),
-                footer: frame.footer.clone(),
-                cert: summarize_cert(&frame.cert),
-            }));
-        }
-        Err(e) if e.to_string().contains("not HARMONY! magic") => {}
-        Err(e) => return Err(e),
+    if starts_with_magic(image, HARMONY_MAGIC)? {
+        let frame = HvbFrame::load(image)?;
+        return Ok(PartitionSummary::Harmony(HarmonySummary {
+            hdr_size: frame.harmony.hdr_size,
+            image_size: frame.harmony.image_size,
+            flags: frame.harmony.flags,
+            buildvariant: frame.harmony.buildvariant.clone(),
+            footer: frame.footer.clone(),
+            cert: summarize_cert(&frame.cert),
+        }));
     }
     if starts_with_magic(image, RVT_MAGIC)? {
         return Ok(PartitionSummary::Rvt(rvt::parse_image(image)?));

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, ensure};
-use common::formats::{cpio, erofs, header::check_fmt};
+use common::formats::{cpio, erofs, header::check_fmt_full};
 use common::package::UpdateLayout;
 use common::tools::ToolPaths;
-use common::{entropy, nvme, package, partition, ramdisk};
+use common::{entropy, fs_util, nvme, package, partition, ramdisk};
 use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
 use hisi_vcom::vcom;
 use serde::{Deserialize, Serialize};
@@ -17,27 +17,16 @@ pub const WORKER_ENV: &str = "HAUCET_GUI_WORKER";
 pub enum JobOp {
     PackageInspect {
         input: String,
-        layout: String,
+        layout: UpdateLayout,
     },
     PackageUnpack {
         input: String,
         output: String,
         partitions: Vec<String>,
         all_erofs: bool,
-        layout: String,
+        layout: UpdateLayout,
         force: bool,
         tools_dir: Option<String>,
-    },
-    UpdateList {
-        input: String,
-        layout: String,
-    },
-    UpdateUnpack {
-        input: String,
-        output: String,
-        layout: String,
-        force: bool,
-        selected: Vec<String>,
     },
     ErofsUnpack {
         image: String,
@@ -72,9 +61,6 @@ pub enum JobOp {
     PartitionInfo {
         image: String,
     },
-    FileEntropy {
-        file: String,
-    },
     NvmeInspect {
         image: String,
     },
@@ -83,7 +69,6 @@ pub enum JobOp {
         key: String,
         value: String,
         value_format: String,
-        sync_all_blocks: bool,
     },
     FastbootStatus {},
     FastbootReboot {},
@@ -148,7 +133,7 @@ pub fn run_worker() -> i32 {
 fn execute(op: &JobOp) -> Result<WorkerResult> {
     match op {
         JobOp::PackageInspect { input, layout } => {
-            let index = package::inspect(Path::new(input), parse_layout(layout)?)?;
+            let index = package::inspect(Path::new(input), *layout)?;
             summary_payload(
                 format!(
                     "包内共 {} 个组件(检测到 {} 布局)",
@@ -174,61 +159,13 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 &tools,
                 partitions,
                 *all_erofs,
-                parse_layout(layout)?,
+                *layout,
                 *force,
             )?;
             Ok(WorkerResult {
                 ok: true,
                 summary: format!("更新包已解包到 {}", output),
                 payload: None,
-            })
-        }
-        JobOp::UpdateList { input, layout } => {
-            let file = fs::File::open(input).with_context(|| format!("打开 {}", input))?;
-            let length = file.metadata()?.len();
-            let index = package::read_index(
-                &mut std::io::BufReader::new(file),
-                Some(length),
-                parse_layout(layout)?,
-            )?;
-            summary_payload(
-                format!(
-                    "共 {} 个组件(检测到 {} 布局)",
-                    index.components.len(),
-                    layout_label(index.layout)
-                ),
-                index,
-            )
-        }
-        JobOp::UpdateUnpack {
-            input,
-            output,
-            layout,
-            force,
-            selected,
-        } => {
-            let count = if selected.is_empty() {
-                package::unpack_file(
-                    Path::new(input),
-                    Path::new(output),
-                    parse_layout(layout)?,
-                    *force,
-                )?
-                .len()
-            } else {
-                package::unpack_selected_file(
-                    Path::new(input),
-                    Path::new(output),
-                    selected,
-                    parse_layout(layout)?,
-                    *force,
-                )?
-                .len()
-            };
-            Ok(WorkerResult {
-                ok: true,
-                summary: format!("已解包 {count} 个组件到 {output}"),
-                payload: Some(serde_json::json!({ "count": count })),
             })
         }
         JobOp::ErofsUnpack {
@@ -264,8 +201,13 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             output,
             force,
         } => {
-            prepare_output_dir(Path::new(output), *force)?;
-            let image = canonical_path(Path::new(image))?;
+            let image = fs_util::canonical_path(Path::new(image))?;
+            fs_util::prepare_dir_excluding(
+                Path::new(output),
+                "output directory",
+                *force,
+                &[&image],
+            )?;
             ramdisk::unpack(&image, Path::new(output))?;
             Ok(WorkerResult {
                 ok: true,
@@ -278,9 +220,9 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             original,
             output,
         } => {
-            let workspace = canonical_path(Path::new(workspace))?;
-            let original = canonical_path(Path::new(original))?;
-            let output = absolute_path(Path::new(output))?;
+            let workspace = fs_util::canonical_path(Path::new(workspace))?;
+            let original = fs_util::canonical_path(Path::new(original))?;
+            let output = fs_util::absolute_path(Path::new(output))?;
             ramdisk::repack(&workspace, &original, &output)?;
             Ok(WorkerResult {
                 ok: true,
@@ -293,7 +235,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             binary,
             output,
         } => {
-            let output = absolute_path(Path::new(output))?;
+            let output = fs_util::absolute_path(Path::new(output))?;
             ramdisk::patch(Path::new(image), Path::new(binary), &output)?;
             Ok(WorkerResult {
                 ok: true,
@@ -352,23 +294,17 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 }),
             )
         }
-        JobOp::FileEntropy { file } => {
-            let summary = entropy::analyze_file(Path::new(file))?;
-            summary_payload(
-                format!(
-                    "信息熵 {:.6} bits/byte ({:.2}%)",
-                    summary.entropy_bits_per_byte,
-                    summary.normalized_percent()
-                ),
-                summary,
-            )
-        }
         JobOp::NvmeInspect { image } => {
             let summary = nvme::inspect(Path::new(image))?;
+            let crc_status = if summary.crc_supported {
+                format!("CRC 错误 {} 个", summary.crc_invalid)
+            } else {
+                "CRC 未启用".to_owned()
+            };
             summary_payload(
                 format!(
-                    "NVE/NVME: {} 个活动副本, {} 个条目, CRC 错误 {} 个",
-                    summary.active_blocks, summary.valid_items, summary.crc_invalid
+                    "NVE/NVME: {} 个活动副本, {} 个条目, {}",
+                    summary.active_blocks, summary.valid_items, crc_status
                 ),
                 summary,
             )
@@ -378,19 +314,16 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             key,
             value,
             value_format,
-            sync_all_blocks,
         } => {
-            let result = nvme::edit_file_in_place(
-                Path::new(image),
-                key,
-                value,
-                value_format,
-                *sync_all_blocks,
-            )?;
+            let result = nvme::edit_file_in_place(Path::new(image), key, value, value_format)?;
             summary_payload(
                 format!(
-                    "已修改 {} 个 NVE 条目，备份已创建: {}",
-                    result.updated_items, result.backup_path
+                    "已从 NVE 副本 {} 向副本 {} 提交 {} 个条目（代次 {}），备份已创建: {}",
+                    result.source_block,
+                    result.committed_block,
+                    result.updated_items,
+                    result.age,
+                    result.backup_path
                 ),
                 result,
             )
@@ -478,40 +411,41 @@ fn emit_log(text: &str) {
     println!("{line}");
 }
 
-fn clean_device_string(s: &str) -> Option<String> {
-    hm_fastboot::nusb::clean_device_string(s)
-}
-
 fn fastboot_status() -> Result<WorkerResult> {
     let runtime = fastboot_runtime()?;
     runtime.block_on(async {
-        use hm_fastboot::nusb::{DeviceInfo, NusbFastBoot};
-        let devices = hm_fastboot::nusb::devices()
+        use hm_fastboot::nusb::{DeviceSelectionError, NusbFastBoot, require_single_device};
+        let devices: Vec<_> = hm_fastboot::nusb::devices()
             .await
-            .context("枚举 USB 设备失败")?;
-
-        let mut list = Vec::new();
-        let mut first: Option<DeviceInfo> = None;
-        for info in devices {
-            list.push(device_json(&info));
-            if first.is_none() {
-                first = Some(info);
+            .context("枚举 USB 设备失败")?
+            .collect();
+        let list: Vec<_> = devices.iter().map(device_json).collect();
+        let info = match require_single_device(devices.into_iter()) {
+            Ok(info) => info,
+            Err(DeviceSelectionError::NotFound) => {
+                return Ok(WorkerResult {
+                    ok: true,
+                    summary: "未检测到 fastboot 设备".to_owned(),
+                    payload: Some(serde_json::json!({
+                        "connected": false,
+                        "devices": list,
+                    })),
+                });
             }
-        }
-
-        let Some(info) = first else {
-            return Ok(WorkerResult {
-                ok: true,
-                summary: "未检测到 fastboot 设备".to_owned(),
-                payload: Some(serde_json::json!({
-                    "connected": false,
-                    "devices": list,
-                })),
-            });
+            Err(DeviceSelectionError::Multiple) => {
+                return Ok(WorkerResult {
+                    ok: true,
+                    summary: "检测到多个 fastboot 设备，已拒绝选择目标".to_owned(),
+                    payload: Some(serde_json::json!({
+                        "connected": false,
+                        "devices": list,
+                    })),
+                });
+            }
         };
 
         let mut vars = serde_json::Map::new();
-        match NusbFastBoot::from_info(&info).await {
+        let opened = match NusbFastBoot::from_info(&info).await {
             Ok(mut fb) => {
                 for var in ["product", "serialno", "version", "max-download-size"] {
                     match fb.get_var(var).await {
@@ -521,9 +455,13 @@ fn fastboot_status() -> Result<WorkerResult> {
                         Err(error) => emit_log(&format!("getvar:{var} 失败: {error}")),
                     }
                 }
+                true
             }
-            Err(error) => emit_log(&format!("打开设备失败: {error:#}")),
-        }
+            Err(error) => {
+                emit_log(&format!("打开设备失败: {error:#}"));
+                false
+            }
+        };
 
         let product = vars
             .get("product")
@@ -532,9 +470,13 @@ fn fastboot_status() -> Result<WorkerResult> {
             .to_owned();
         Ok(WorkerResult {
             ok: true,
-            summary: format!("已连接 fastboot 设备: {product}"),
+            summary: if opened {
+                format!("已连接 fastboot 设备: {product}")
+            } else {
+                "检测到 fastboot 设备，但无法打开".to_owned()
+            },
             payload: Some(serde_json::json!({
-                "connected": true,
+                "connected": opened,
                 "devices": list,
                 "vars": vars,
             })),
@@ -547,12 +489,10 @@ fn fastboot_reboot() -> Result<WorkerResult> {
     runtime.block_on(async {
         use hm_fastboot::nusb::NusbFastBoot;
 
-        let mut devices = hm_fastboot::nusb::devices()
+        let devices = hm_fastboot::nusb::devices()
             .await
             .context("枚举 USB 设备失败")?;
-        let info = devices.next().ok_or_else(|| {
-            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
-        })?;
+        let info = single_fastboot_device(devices)?;
         let mut fb = NusbFastBoot::from_info(&info)
             .await
             .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
@@ -567,6 +507,8 @@ fn fastboot_reboot() -> Result<WorkerResult> {
 }
 
 fn device_json(info: &hm_fastboot::nusb::DeviceInfo) -> serde_json::Value {
+    use hm_fastboot::nusb::clean_device_string;
+
     serde_json::json!({
         "bus": info.bus_id(),
         "addr": info.device_address(),
@@ -587,12 +529,10 @@ fn fastboot_flash(image: &Path, target: &str) -> Result<WorkerResult> {
     let runtime = fastboot_runtime()?;
     runtime.block_on(async {
         use hm_fastboot::nusb::{FlashEvent, NusbFastBoot};
-        let mut devices = hm_fastboot::nusb::devices()
+        let devices = hm_fastboot::nusb::devices()
             .await
             .context("枚举 USB 设备失败")?;
-        let info = devices.next().ok_or_else(|| {
-            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
-        })?;
+        let info = single_fastboot_device(devices)?;
         let mut fb = NusbFastBoot::from_info(&info)
             .await
             .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
@@ -614,26 +554,41 @@ fn fastboot_flash(image: &Path, target: &str) -> Result<WorkerResult> {
     })
 }
 
+fn single_fastboot_device<T>(devices: impl Iterator<Item = T>) -> Result<T> {
+    use hm_fastboot::nusb::{DeviceSelectionError, require_single_device};
+
+    require_single_device(devices).map_err(|error| match error {
+        DeviceSelectionError::NotFound => {
+            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
+        }
+        DeviceSelectionError::Multiple => {
+            anyhow::anyhow!("检测到多个 fastboot 设备: 请断开其他设备后重试")
+        }
+    })
+}
+
 fn probe_ramdisk(image: &Path) -> Result<serde_json::Value> {
     let frame = common::formats::harmony::HvbFrame::load(image)
         .with_context(|| format!("读取 {}", image.display()))?;
     let payload = frame.extract_image_payload();
     ensure!(!payload.is_empty(), "镜像内没有负载数据");
-    let fmt = check_fmt(payload);
+    let fmt = check_fmt_full(payload);
     let cpio_bytes = if fmt.is_compressed() {
         common::compress::decompress_vec(fmt, payload).map_err(std::io::Error::other)?
     } else {
         payload.to_vec()
     };
     let cpio = cpio::Cpio::load_from_data(&cpio_bytes)?;
-    let patched = cpio.exists(".backup/init_early");
-    let has_init = cpio.exists("bin/init_early") || cpio.exists("init");
+    let patch_status = ramdisk::patch_status(&cpio);
+    let patched = patch_status == ramdisk::RamdiskPatchStatus::Patched;
+    let has_init_early = cpio.exists("bin/init_early");
     Ok(serde_json::json!({
         "patched": patched,
-        "has_init_early": has_init,
-        "layout_known": patched || has_init,
+        "has_init_early": has_init_early,
+        "layout_known": patch_status != ramdisk::RamdiskPatchStatus::Unsupported,
         "payload_format": fmt.as_str(),
         "payload_len": payload.len(),
+        "header_size": frame.harmony.hdr_size,
         "cert_image_len": frame.cert.image_len,
         "cert_original_len": frame.cert.image_original_len,
     }))
@@ -645,10 +600,6 @@ fn summary_payload<T: Serialize>(summary: String, payload: T) -> Result<WorkerRe
         summary,
         payload: Some(serde_json::to_value(payload)?),
     })
-}
-
-fn parse_layout(value: &str) -> Result<UpdateLayout> {
-    value.parse().map_err(|e: String| anyhow::anyhow!(e))
 }
 
 fn layout_label(layout: UpdateLayout) -> &'static str {
@@ -665,26 +616,4 @@ fn discover_tools(tools_dir: &Option<String>) -> Result<ToolPaths> {
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
     ToolPaths::discover(explicit)
-}
-
-fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
-    if output.exists() && fs::read_dir(output)?.next().is_some() {
-        ensure!(force, "输出目录不是空的: {}", output.display());
-        fs::remove_dir_all(output)
-            .with_context(|| format!("删除旧输出目录 {}", output.display()))?;
-    }
-    fs::create_dir_all(output).with_context(|| format!("创建输出目录 {}", output.display()))
-}
-
-fn canonical_path(path: &Path) -> Result<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("解析路径 {}", path.display()))
-}
-
-fn absolute_path(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_owned())
-    } else {
-        Ok(std::env::current_dir()?.join(path))
-    }
 }

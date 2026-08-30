@@ -1,4 +1,5 @@
 use eframe::egui;
+use std::path::Path;
 
 pub fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -19,32 +20,45 @@ pub fn hex64(value: u64) -> String {
     format!("0x{value:X}")
 }
 
-pub fn open_in_file_manager(path: &std::path::Path) {
-    let path_text = path.display().to_string();
+pub fn open_in_file_manager(path: &Path) {
     let result = open_command(path);
     if let Some(mut command) = result {
         let _ = command.spawn();
     }
-    let _ = path_text;
 }
 
-fn open_command(path: &std::path::Path) -> Option<std::process::Command> {
+fn open_command(path: &Path) -> Option<std::process::Command> {
     #[cfg(target_os = "windows")]
     {
         let mut command = std::process::Command::new("explorer");
-        command.arg(path);
+        if path.is_dir() {
+            command.arg(path);
+        } else {
+            command.arg("/select,").arg(path);
+        }
         return Some(command);
     }
     #[cfg(target_os = "macos")]
     {
         let mut command = std::process::Command::new("open");
-        command.arg("-R").arg(path);
+        if path.is_dir() {
+            command.arg(path);
+        } else {
+            command.arg("-R").arg(path);
+        }
         return Some(command);
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let mut command = std::process::Command::new("xdg-open");
-        command.arg(path);
+        let target = if path.is_dir() {
+            path
+        } else {
+            path.parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or(path)
+        };
+        command.arg(target);
         return Some(command);
     }
     #[allow(unreachable_code)]
@@ -95,6 +109,31 @@ pub fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
     ui.label(egui::RichText::new(title).strong().size(16.0));
     ui.add_space(2.0);
+}
+
+pub fn trimmed_non_empty(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+pub fn sibling_output_path(input: &str, fallback_stem: &str, suffix: &str) -> String {
+    let path = Path::new(input);
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| fallback_stem.to_owned());
+    let name = format!("{stem}{suffix}");
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(|parent| parent.join(&name).display().to_string())
+        .unwrap_or(name)
+}
+
+pub fn update_derived_path(value: &mut String, previous: &mut Option<String>, next: String) {
+    if value.trim().is_empty() || previous.as_deref() == Some(value.as_str()) {
+        *value = next.clone();
+        *previous = Some(next);
+    }
 }
 
 pub fn mode_string(mode: u32) -> String {

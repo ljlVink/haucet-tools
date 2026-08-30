@@ -1,10 +1,10 @@
 use bytemuck::{Pod, Zeroable, from_bytes};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::io::Write;
 use std::mem::size_of;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C, packed)]
@@ -75,66 +75,95 @@ impl Cpio {
 
     pub fn load_from_data(data: &[u8]) -> std::io::Result<Self> {
         let mut cpio = Cpio::new();
+        let mut source_names = BTreeMap::<String, String>::new();
         let mut pos = 0_usize;
         while pos < data.len() {
             let hdr_sz = size_of::<CpioHeader>();
-            if pos + hdr_sz > data.len() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "truncated cpio header",
-                ));
-            }
-            let hdr = from_bytes::<CpioHeader>(&data[pos..(pos + hdr_sz)]);
+            let header_end = pos
+                .checked_add(hdr_sz)
+                .filter(|end| *end <= data.len())
+                .ok_or_else(|| invalid_data("truncated cpio header"))?;
+            let hdr = from_bytes::<CpioHeader>(&data[pos..header_end]);
             if &hdr.magic != b"070701" && &hdr.magic != b"070702" {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "invalid cpio magic",
-                ));
+                return Err(invalid_data("invalid cpio magic"));
             }
-            pos += hdr_sz;
+            pos = header_end;
             let name_sz = x8u(&hdr.namesize)? as usize;
-            if pos + name_sz > data.len() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "truncated cpio entry name",
-                ));
+            if name_sz == 0 {
+                return Err(invalid_data("cpio entry name has no terminator"));
             }
-            let name_end = pos + name_sz;
-            let name = std::str::from_utf8(&data[pos..name_end])
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "non-utf8 name"))?
-                .trim_end_matches('\0')
-                .to_string();
-            pos = align_4(name_end);
+            let name_end = pos
+                .checked_add(name_sz)
+                .filter(|end| *end <= data.len())
+                .ok_or_else(|| invalid_data("truncated cpio entry name"))?;
+            let raw_name = &data[pos..name_end];
+            if raw_name.last() != Some(&0) || raw_name[..raw_name.len() - 1].contains(&0) {
+                return Err(invalid_data("invalid cpio entry name terminator"));
+            }
+            let name = std::str::from_utf8(&raw_name[..raw_name.len() - 1])
+                .map_err(|_| invalid_data("non-utf8 cpio entry name"))?
+                .to_owned();
+            let data_start = checked_align_4(name_end)
+                .filter(|start| *start <= data.len())
+                .ok_or_else(|| invalid_data("truncated cpio name padding"))?;
+            let file_sz = x8u(&hdr.filesize)? as usize;
+            let data_end = data_start
+                .checked_add(file_sz)
+                .filter(|end| *end <= data.len())
+                .ok_or_else(|| invalid_data("truncated cpio entry data"))?;
+            let next_pos = checked_align_4(data_end)
+                .filter(|next| *next <= data.len())
+                .ok_or_else(|| invalid_data("truncated cpio data padding"))?;
+
+            if &hdr.magic == b"070702" {
+                let expected = x8u(&hdr.check)?;
+                let actual = data[data_start..data_end]
+                    .iter()
+                    .fold(0_u32, |sum, byte| sum.wrapping_add(u32::from(*byte)));
+                if actual != expected {
+                    return Err(invalid_data("cpio entry checksum mismatch"));
+                }
+            }
+
+            pos = next_pos;
             if name == "." || name == ".." {
                 continue;
             }
             if name == "TRAILER!!!" {
-                match data[pos..].windows(6).position(|w| w == b"070701") {
-                    Some(x) => pos += x,
+                if file_sz != 0 {
+                    return Err(invalid_data("cpio trailer has data"));
+                }
+                match data[pos..]
+                    .windows(6)
+                    .position(|window| window == b"070701" || window == b"070702")
+                {
+                    Some(offset) => pos += offset,
                     None => break,
                 }
                 continue;
             }
-            let file_sz = x8u(&hdr.filesize)? as usize;
-            let data_end = pos + file_sz;
-            if data_end > data.len() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "truncated cpio entry data",
-                ));
+            validate_entry_name(&name)?;
+            let normalized_name = norm_path(&name);
+            if let Some(previous_name) = source_names.get(&normalized_name) {
+                if previous_name != &name {
+                    return Err(invalid_data(format!(
+                        "cpio entries {previous_name:?} and {name:?} map to the same path"
+                    )));
+                }
+            } else {
+                source_names.insert(normalized_name.clone(), name);
             }
             cpio.entries.insert(
-                name.clone(),
+                normalized_name,
                 CpioEntry {
                     mode: x8u(&hdr.mode)?,
                     uid: x8u(&hdr.uid)?,
                     gid: x8u(&hdr.gid)?,
                     rdevmajor: x8u(&hdr.rdevmajor)?,
                     rdevminor: x8u(&hdr.rdevminor)?,
-                    data: data[pos..data_end].to_vec(),
+                    data: data[data_start..data_end].to_vec(),
                 },
             );
-            pos = align_4(data_end);
         }
         Ok(cpio)
     }
@@ -157,6 +186,11 @@ impl Cpio {
         let mut pos = 0usize;
         let mut inode = 300000u32;
         for (name, entry) in &self.entries {
+            validate_entry_name(name)?;
+            let name_size = u32::try_from(name.len().saturating_add(1))
+                .map_err(|_| invalid_input("cpio entry name is too long"))?;
+            let data_size = u32::try_from(entry.data.len())
+                .map_err(|_| invalid_input("cpio entry data exceeds 4 GiB"))?;
             let header = format!(
                 "070701{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}{:08x}",
                 inode,
@@ -165,12 +199,12 @@ impl Cpio {
                 entry.gid,
                 1u32,
                 0u32,
-                entry.data.len(),
+                data_size,
                 0u32,
                 0u32,
                 entry.rdevmajor,
                 entry.rdevminor,
-                name.len() + 1,
+                name_size,
                 0u32,
             );
             out.write_all(header.as_bytes())?;
@@ -291,6 +325,7 @@ impl Cpio {
         })?;
         eprintln!("Extracting entry [{path}] -> [{out_path}]");
         let p = PathBuf::from(out_path);
+        ensure_no_symlink_components(&p)?;
         if let Some(parent) = p.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -333,6 +368,14 @@ impl Cpio {
 
     pub fn extract(&self, paths: &[&str]) -> std::io::Result<()> {
         if paths.is_empty() {
+            let mut outputs = BTreeSet::new();
+            for path in self.entries.keys() {
+                validate_entry_name(path)?;
+                let output = norm_path(path);
+                if !outputs.insert(output) {
+                    return Err(invalid_data("multiple cpio entries map to the same path"));
+                }
+            }
             for path in self.entries.keys() {
                 let out = norm_path(path);
                 if out.is_empty() || out == "." || out == ".." {
@@ -466,12 +509,58 @@ fn align_4(x: usize) -> usize {
     (x + 3) & !3
 }
 
+fn checked_align_4(x: usize) -> Option<usize> {
+    x.checked_add(3).map(|value| value & !3)
+}
+
+fn validate_entry_name(name: &str) -> std::io::Result<()> {
+    let path = Path::new(name);
+    if name.is_empty()
+        || name.contains('\\')
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(invalid_data(format!("unsafe cpio entry name {name:?}")));
+    }
+    Ok(())
+}
+
+fn invalid_data(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message.into())
+}
+
+fn invalid_input(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, message.into())
+}
+
 #[inline(always)]
 pub fn norm_path(path: &str) -> String {
     path.split('/')
-        .filter(|x| !x.is_empty())
+        .filter(|part| !part.is_empty() && *part != ".")
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn ensure_no_symlink_components(path: &Path) -> std::io::Result<()> {
+    for component_path in path
+        .ancestors()
+        .filter(|ancestor| !ancestor.as_os_str().is_empty())
+    {
+        match fs::symlink_metadata(component_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(invalid_data(format!(
+                    "refusing to extract through symlink {}",
+                    component_path.display()
+                )));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 fn x8u(x: &[u8; 8]) -> std::io::Result<u32> {

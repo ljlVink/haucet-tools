@@ -37,34 +37,6 @@ impl Page {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LayoutChoice {
-    #[default]
-    Auto,
-    L1,
-    L2,
-}
-
-impl LayoutChoice {
-    pub const ALL: [Self; 3] = [Self::Auto, Self::L1, Self::L2];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Auto => "自动检测",
-            Self::L1 => "L1",
-            Self::L2 => "L2",
-        }
-    }
-
-    pub fn spec(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::L1 => "l1",
-            Self::L2 => "l2",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct ResultView {
     pub ok: bool,

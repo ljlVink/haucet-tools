@@ -94,91 +94,6 @@ pub struct PackageIndex {
     pub components: Vec<Component>,
 }
 
-pub fn list_file(input: &Path, layout: UpdateLayout) -> Result<()> {
-    let file =
-        File::open(input).with_context(|| format!("opening update package {}", input.display()))?;
-    let length = file.metadata()?.len();
-    let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
-    let index = read_index(&mut reader, Some(length), layout)?;
-
-    println!(
-        "layout={:?} components={} data_offset={}",
-        index.layout,
-        index.components.len(),
-        index.data_offset
-    );
-    for (number, component) in index.components.iter().enumerate() {
-        println!(
-            "{:>3}  {:<36} type={} size={} offset={}",
-            number + 1,
-            component.output_name,
-            component.component_type,
-            component.size,
-            component.data_offset
-        );
-    }
-    Ok(())
-}
-
-pub fn unpack_file(
-    input: &Path,
-    out: &Path,
-    layout: UpdateLayout,
-    force: bool,
-) -> Result<Vec<Component>> {
-    let file =
-        File::open(input).with_context(|| format!("opening update package {}", input.display()))?;
-    let length = file.metadata()?.len();
-    let reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
-    unpack_reader(reader, Some(length), out, layout, force)
-}
-
-pub fn unpack_selected_file(
-    input: &Path,
-    out: &Path,
-    selected: &[String],
-    layout: UpdateLayout,
-    force: bool,
-) -> Result<Vec<Component>> {
-    ensure!(
-        !selected.is_empty(),
-        "no components selected for extraction"
-    );
-    let file =
-        File::open(input).with_context(|| format!("opening update package {}", input.display()))?;
-    let length = file.metadata()?.len();
-    let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
-    let index = read_index(&mut reader, Some(length), layout)?;
-
-    let mut chosen: Vec<&Component> = Vec::new();
-    for raw_name in selected {
-        let name = raw_name.trim().trim_end_matches(".img");
-        let component = index
-            .components
-            .iter()
-            .find(|component| component.name == name || component.output_name == name)
-            .with_context(|| format!("partition {name:?} is not present in update.bin"))?;
-        if !chosen
-            .iter()
-            .any(|existing| existing.name == component.name)
-        {
-            chosen.push(component);
-        }
-    }
-    chosen.sort_by_key(|component| component.data_offset);
-    for (position, component) in chosen.iter().enumerate() {
-        eprintln!(
-            "[{}/{}] extracting {} ({} bytes)",
-            position + 1,
-            chosen.len(),
-            component.output_name,
-            component.size
-        );
-        write_component(&mut reader, out, component, position, force)?;
-    }
-    Ok(chosen.into_iter().cloned().collect())
-}
-
 pub fn unpack_reader<R: Read>(
     mut reader: R,
     total_length: Option<u64>,
@@ -520,16 +435,19 @@ pub fn unpack_full(
     layout: UpdateLayout,
     force: bool,
 ) -> Result<()> {
+    fs_util::ensure_output_does_not_contain(input, out)?;
     let tools = ToolPaths::discover(None)?;
     unpack_full_with_tools_window(
         input,
         out,
         &tools,
-        partitions,
-        all_erofs,
-        layout,
-        force,
-        CommandWindow::Inherit,
+        FullUnpackOptions {
+            partitions,
+            all_erofs,
+            layout,
+            force,
+            window: CommandWindow::Inherit,
+        },
     )
 }
 
@@ -542,29 +460,43 @@ pub fn unpack_full_with_tools(
     layout: UpdateLayout,
     force: bool,
 ) -> Result<()> {
+    fs_util::ensure_output_does_not_contain(input, out)?;
     unpack_full_with_tools_window(
         input,
         out,
         tools,
-        partitions,
-        all_erofs,
-        layout,
-        force,
-        CommandWindow::Hidden,
+        FullUnpackOptions {
+            partitions,
+            all_erofs,
+            layout,
+            force,
+            window: CommandWindow::Hidden,
+        },
     )
+}
+
+struct FullUnpackOptions<'a> {
+    partitions: &'a [String],
+    all_erofs: bool,
+    layout: UpdateLayout,
+    force: bool,
+    window: CommandWindow,
 }
 
 fn unpack_full_with_tools_window(
     input: &Path,
     out: &Path,
     tools: &ToolPaths,
-    partitions: &[String],
-    all_erofs: bool,
-    layout: UpdateLayout,
-    force: bool,
-    window: CommandWindow,
+    options: FullUnpackOptions<'_>,
 ) -> Result<()> {
-    prepare_output(out, force)?;
+    let FullUnpackOptions {
+        partitions,
+        all_erofs,
+        layout,
+        force,
+        window,
+    } = options;
+    prepare_output(out, input, force)?;
     let package_dir = out.join("package");
     let images_dir = out.join("images");
     let partitions_dir = out.join("partitions");
@@ -664,8 +596,8 @@ fn unpack_full_with_tools_window(
     Ok(())
 }
 
-fn prepare_output(out: &Path, force: bool) -> Result<()> {
-    fs_util::prepare_dir(out, "output directory", force)
+fn prepare_output(out: &Path, input: &Path, force: bool) -> Result<()> {
+    fs_util::prepare_dir_excluding(out, "output directory", force, &[input])
 }
 
 fn is_update_bin_file(input: &Path) -> bool {
@@ -779,7 +711,7 @@ fn is_ramdisk_payload(payload: &[u8; 16]) -> bool {
 }
 
 fn unpack_ramdisk(image: &Path, workspace: &Path, force: bool) -> Result<()> {
-    fs_util::prepare_dir(workspace, "ramdisk workspace", force)?;
+    fs_util::prepare_dir_excluding(workspace, "ramdisk workspace", force, &[image])?;
     let image = image
         .canonicalize()
         .with_context(|| format!("resolving ramdisk image {}", image.display()))?;

@@ -223,10 +223,7 @@ enum ActionKind {
 
 fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
     match kind {
-        FileKind::ZipPackage => vec![
-            ("解包更新包", Page::Package, ActionKind::Input),
-            ("查看包内组件", Page::Package, ActionKind::Input),
-        ],
+        FileKind::ZipPackage => vec![("解包更新包", Page::Package, ActionKind::Input)],
         FileKind::Erofs => vec![
             ("解包 EROFS", Page::Images, ActionKind::ErofsInput),
             ("查看分区信息", Page::Images, ActionKind::PartitionInput),
@@ -255,29 +252,22 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
 fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
     match (page, kind) {
         (Page::Package, ActionKind::Input) => {
-            app.package.input = path.to_owned();
-            if app.package.output.trim().is_empty() {
-                app.package.output = default_output_for(&app.package.input, "package-work");
-            }
+            app.package.select_input(path.to_owned());
         }
         (Page::Images, ActionKind::ErofsInput) => {
             app.images.kind = crate::pages::images::ImageKind::Erofs;
-            app.images.erofs.unpack.image = path.to_owned();
+            app.images.erofs.select_unpack_image(path.to_owned());
             app.images.erofs.tab = crate::pages::erofs::ErofsTab::Unpack;
         }
         (Page::Images, ActionKind::ErofsWorkspace) => {
             app.images.kind = crate::pages::images::ImageKind::Erofs;
-            app.images.erofs.repack.workspace = path.to_owned();
+            app.images.erofs.select_workspace(path.to_owned());
             app.images.erofs.tab = crate::pages::erofs::ErofsTab::Repack;
         }
         (Page::Images, ActionKind::RamdiskInput) => {
             app.images.kind = crate::pages::images::ImageKind::Ramdisk;
-            app.images.ramdisk.patch.image = path.to_owned();
+            app.images.ramdisk.select_patch_image(path.to_owned());
             app.images.ramdisk.tab = crate::pages::ramdisk::RamdiskTab::Patch;
-            if app.images.ramdisk.patch.output.trim().is_empty() {
-                app.images.ramdisk.patch.output =
-                    default_output_for(&app.images.ramdisk.patch.image, "patched.img");
-            }
         }
         (Page::Images, ActionKind::RamdiskWorkspace) => {
             app.images.kind = crate::pages::images::ImageKind::Ramdisk;
@@ -292,30 +282,11 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
             app.nvme.select_input(path.to_owned());
         }
         (Page::Cpio, _) => {
-            app.cpio.source = crate::pages::cpio::CpioSource::File;
-            app.cpio.path = path.to_owned();
+            app.cpio.select_input(path.to_owned());
         }
         _ => {}
     }
     app.nav(page);
-}
-
-fn default_output_for(input: &str, suffix: &str) -> String {
-    let path = std::path::Path::new(input);
-    let parent = path
-        .parent()
-        .map(|parent| parent.display().to_string())
-        .unwrap_or_default();
-    let stem = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "output".to_owned());
-    let name = format!("{stem}-{suffix}");
-    if parent.is_empty() {
-        name
-    } else {
-        format!("{parent}/{name}")
-    }
 }
 
 fn quick_card(

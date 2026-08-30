@@ -70,6 +70,11 @@ impl FastbootPage {
 
     fn status_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         section(ui, "Fastboot 设备");
+        let reboot_ready = !app.job_running()
+            && self
+                .status
+                .as_ref()
+                .is_some_and(|status| status.connected && status.devices.len() == 1);
         ui.horizontal(|ui| {
             if run_button(
                 ui,
@@ -84,7 +89,7 @@ impl FastbootPage {
             if run_button(
                 ui,
                 "重启设备",
-                !app.job_running(),
+                reboot_ready,
                 Some("向已连接的 fastboot 设备发送 reboot 命令"),
             )
             .clicked()
@@ -122,11 +127,14 @@ impl FastbootPage {
             return;
         };
         if !status.connected {
-            message_box(
-                ui,
-                egui::Color32::from_rgb(230, 170, 40),
-                "未检测到 fastboot 设备",
-            );
+            let message = match status.devices.len() {
+                0 => "未检测到 fastboot 设备",
+                1 => "检测到 fastboot 设备，但无法打开。请检查管理员权限或 WinUSB 驱动后重新检测。",
+                _ => {
+                    "检测到多个 fastboot 设备，为避免选错目标，刷写和重启已禁用。请只保留目标设备后重新检测。"
+                }
+            };
+            message_box(ui, egui::Color32::from_rgb(230, 170, 40), message);
             return;
         }
 
@@ -213,8 +221,13 @@ impl FastbootPage {
                 .color(egui::Color32::from_rgb(230, 170, 40)),
         );
         ui.add_space(6.0);
-        let ready =
-            !app.job_running() && !self.image.trim().is_empty() && !self.target.trim().is_empty();
+        let ready = !app.job_running()
+            && self
+                .status
+                .as_ref()
+                .is_some_and(|status| status.connected && status.devices.len() == 1)
+            && !self.image.trim().is_empty()
+            && !self.target.trim().is_empty();
         if run_button(
             ui,
             "刷写镜像",

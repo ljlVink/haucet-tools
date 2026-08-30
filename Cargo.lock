@@ -600,7 +600,6 @@ dependencies = [
  "common",
  "hisi-vcom",
  "hm-fastboot",
- "libc",
  "tokio",
 ]
 
@@ -649,6 +648,7 @@ dependencies = [
  "bzip2",
  "crc32c",
  "flate2",
+ "fs2",
  "hex",
  "libc",
  "lz4",
@@ -1192,6 +1192,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1400,10 +1410,12 @@ dependencies = [
  "hisi-vcom",
  "hm-fastboot",
  "image",
+ "libc",
  "rfd",
  "serde",
  "serde_json",
  "tokio",
+ "windows-sys 0.61.2",
  "winresource",
 ]
 

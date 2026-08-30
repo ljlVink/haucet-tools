@@ -60,18 +60,6 @@ impl FileFormat {
         }
     }
 
-    pub fn ext(&self) -> &'static str {
-        match *self {
-            Self::GZIP | Self::ZOPFLI => "gz",
-            Self::LZOP => "lzo",
-            Self::XZ => "xz",
-            Self::LZMA => "lzma",
-            Self::BZIP2 => "bz2",
-            Self::LZ4 | Self::LZ4_LEGACY | Self::LZ4_LG => "lz4",
-            _ => "",
-        }
-    }
-
     pub fn is_compressed(&self) -> bool {
         matches!(
             *self,
@@ -88,7 +76,7 @@ impl FileFormat {
 }
 
 pub fn check_fmt(buf: &[u8]) -> FileFormat {
-    if buf.len() < 16 {
+    if buf.len() < 4 {
         return FileFormat::UNKNOWN;
     }
     match &buf[0..4] {
@@ -100,11 +88,42 @@ pub fn check_fmt(buf: &[u8]) -> FileFormat {
         [0x02, 0x21, 0x4C, 0x18] => FileFormat::LZ4_LEGACY,
         [0x89, 0x4C, 0x5A, 0x4F] => FileFormat::LZOP,
         _ => {
-            if &buf[0..6] == b"070701" || &buf[0..6] == b"070702" {
+            if buf.len() >= 6 && (&buf[0..6] == b"070701" || &buf[0..6] == b"070702") {
                 FileFormat::RAW
             } else {
                 FileFormat::UNKNOWN
             }
         }
     }
+}
+
+pub fn check_fmt_full(buf: &[u8]) -> FileFormat {
+    let format = check_fmt(buf);
+    if format == FileFormat::LZ4_LEGACY && has_lz4_lg_trailer(buf) {
+        FileFormat::LZ4_LG
+    } else {
+        format
+    }
+}
+
+fn has_lz4_lg_trailer(buf: &[u8]) -> bool {
+    let mut offset = 4_usize;
+    while let Some(size_end) = offset.checked_add(4).filter(|end| *end <= buf.len()) {
+        let block_size = u32::from_le_bytes(
+            buf[offset..size_end]
+                .try_into()
+                .expect("fixed four-byte range"),
+        ) as usize;
+        if size_end == buf.len() {
+            return true;
+        }
+        let Some(block_end) = size_end.checked_add(block_size) else {
+            return false;
+        };
+        if block_end > buf.len() {
+            return false;
+        }
+        offset = block_end;
+    }
+    false
 }

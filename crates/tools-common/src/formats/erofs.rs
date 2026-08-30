@@ -51,11 +51,13 @@ pub fn is_erofs(path: &Path) -> Result<bool> {
 }
 
 pub fn unpack(image: &Path, out: &Path, force: bool) -> Result<()> {
+    fs_util::ensure_output_does_not_contain(image, out)?;
     let tools = ToolPaths::discover(None)?;
     unpack_with_tools_window(image, out, &tools, force, CommandWindow::Inherit)
 }
 
 pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Result<()> {
+    fs_util::ensure_output_does_not_contain(image, out)?;
     unpack_with_tools_window(image, out, tools, force, CommandWindow::Hidden)
 }
 
@@ -71,7 +73,7 @@ pub(crate) fn unpack_with_tools_window(
         "{} is not an EROFS image",
         image.display()
     );
-    fs_util::prepare_dir(out, "EROFS workspace", force)?;
+    fs_util::prepare_dir_excluding(out, "EROFS workspace", force, &[image])?;
 
     eprintln!("extracting EROFS image {}", image.display());
     run_status(

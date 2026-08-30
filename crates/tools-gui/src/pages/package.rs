@@ -1,16 +1,25 @@
 use crate::app::HaucetApp;
-use crate::pages::{LayoutChoice, Page, ResultView, run_button};
-use crate::util::{human_size, message_box, open_in_file_manager, section};
-use common::package::PackageIndex;
+use crate::pages::{Page, ResultView, run_button};
+use crate::util::{
+    human_size, message_box, open_in_file_manager, section, sibling_output_path, trimmed_non_empty,
+    update_derived_path,
+};
+use common::package::{PackageIndex, UpdateLayout};
 use eframe::egui;
 use egui_extras::{Column, TableBuilder};
+
+#[derive(Debug)]
+enum PendingOp {
+    Inspect { input: String, layout: UpdateLayout },
+    Unpack { output: String },
+}
 
 #[derive(Debug, Default)]
 pub struct PackagePage {
     pub input: String,
     pub output: String,
     pub tools_dir: String,
-    pub layout: LayoutChoice,
+    pub layout: UpdateLayout,
     pub force: bool,
     pub all_erofs: bool,
     pub custom_partitions: String,
@@ -21,16 +30,26 @@ pub struct PackagePage {
     pub result: Option<ResultView>,
     inspect_pending: bool,
     input_initialized: bool,
+    input_dirty: bool,
+    pending: Option<PendingOp>,
+    auto_output: Option<String>,
 }
 
 impl PackagePage {
+    pub fn select_input(&mut self, input: String) {
+        self.input = input;
+        self.input_dirty = false;
+        self.update_auto_output();
+        self.queue_inspect();
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         self.poll_result(app);
 
         if !self.input_initialized {
             self.input_initialized = true;
             if !self.input.trim().is_empty() {
-                self.inspect_pending = true;
+                self.queue_inspect();
             }
         }
 
@@ -46,7 +65,7 @@ impl PackagePage {
                 );
                 ui.add_space(14.0);
 
-                let input_selected = path_row(
+                let input_response = path_row(
                     ui,
                     app,
                     "更新文件",
@@ -54,11 +73,14 @@ impl PackagePage {
                     "选择文件",
                     Some(&["zip", "bin"]),
                 );
-                if input_selected {
-                    if self.output.trim().is_empty() {
-                        self.output = default_output(&self.input);
-                    }
-                    self.inspect_pending = true;
+                if input_response.changed {
+                    self.input_dirty = true;
+                    self.invalidate_inspection();
+                }
+                if input_response.committed && self.input_dirty {
+                    self.input_dirty = false;
+                    self.update_auto_output();
+                    self.queue_inspect();
                 }
                 ui.add_space(6.0);
 
@@ -66,11 +88,7 @@ impl PackagePage {
 
                 let drops = app.take_drops(ui.ctx());
                 if let Some(path) = drops.first() {
-                    self.input = path.display().to_string();
-                    if self.output.trim().is_empty() {
-                        self.output = default_output(&self.input);
-                    }
-                    self.inspect_pending = true;
+                    self.select_input(path.display().to_string());
                 }
 
                 if self.inspect_pending && !app.job_running() && !self.input.trim().is_empty() {
@@ -84,14 +102,19 @@ impl PackagePage {
                         && !self.output.trim().is_empty();
                     if run_button(ui, "开始解包", ready, None).clicked() {
                         let partitions = self.selected_partitions();
+                        let output = self.output.trim().to_owned();
+                        self.pending = Some(PendingOp::Unpack {
+                            output: output.clone(),
+                        });
+                        self.result = None;
                         app.start_job(crate::worker::JobOp::PackageUnpack {
                             input: self.input.trim().to_owned(),
-                            output: self.output.trim().to_owned(),
+                            output,
                             partitions,
                             all_erofs: self.all_erofs,
-                            layout: self.layout.spec().to_owned(),
+                            layout: self.layout,
                             force: self.force,
-                            tools_dir: optional(&self.tools_dir),
+                            tools_dir: trimmed_non_empty(&self.tools_dir),
                         });
                     }
                     if app.job_running() {
@@ -110,13 +133,15 @@ impl PackagePage {
                             .show(ui, |ui| {
                                 ui.label("update.bin 布局");
                                 egui::ComboBox::from_id_salt("package-layout")
-                                    .selected_text(self.layout.label())
+                                    .selected_text(layout_label(self.layout))
                                     .show_ui(ui, |ui| {
-                                        for layout in LayoutChoice::ALL {
+                                        for layout in
+                                            [UpdateLayout::Auto, UpdateLayout::L1, UpdateLayout::L2]
+                                        {
                                             ui.selectable_value(
                                                 &mut self.layout,
                                                 layout,
-                                                layout.label(),
+                                                layout_label(layout),
                                             );
                                         }
                                     });
@@ -140,7 +165,7 @@ impl PackagePage {
                     });
 
                 if self.layout != layout_before && !self.input.trim().is_empty() {
-                    self.inspect_pending = true;
+                    self.queue_inspect();
                 }
 
                 ui.add_space(8.0);
@@ -155,61 +180,105 @@ impl PackagePage {
             });
     }
 
+    fn queue_inspect(&mut self) {
+        self.inspect_pending = !self.input.trim().is_empty();
+        self.clear_inspection();
+    }
+
+    fn update_auto_output(&mut self) {
+        let next = sibling_output_path(&self.input, "package", "-work");
+        update_derived_path(&mut self.output, &mut self.auto_output, next);
+    }
+
+    fn invalidate_inspection(&mut self) {
+        self.inspect_pending = false;
+        self.clear_inspection();
+    }
+
+    fn clear_inspection(&mut self) {
+        self.index = None;
+        self.checked.clear();
+        self.inspect_message = None;
+        self.result = None;
+    }
+
     fn start_inspect(&mut self, app: &mut HaucetApp) {
-        if app.start_job(crate::worker::JobOp::PackageInspect {
-            input: self.input.trim().to_owned(),
-            layout: self.layout.spec().to_owned(),
-        }) {
-            self.inspect_pending = false;
-            self.index = None;
-            self.checked.clear();
-            self.inspect_message = None;
-            self.result = None;
-        }
+        let input = self.input.trim().to_owned();
+        let layout = self.layout;
+        self.inspect_pending = false;
+        self.clear_inspection();
+        self.pending = Some(PendingOp::Inspect {
+            input: input.clone(),
+            layout,
+        });
+        app.start_job(crate::worker::JobOp::PackageInspect {
+            input: input.clone(),
+            layout,
+        });
     }
 
     fn poll_result(&mut self, app: &mut HaucetApp) {
         let Some(result) = app.take_result(Page::Package) else {
             return;
         };
-        if !result.ok {
-            if self.index.is_none() && self.inspect_message.is_none() {
-                self.inspect_message = Some(result.summary.clone());
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        match pending {
+            PendingOp::Inspect { input, layout } => {
+                if input != self.input.trim() || layout != self.layout {
+                    return;
+                }
+                if !result.ok {
+                    self.inspect_message = Some(result.summary.clone());
+                    self.result = Some(ResultView {
+                        ok: false,
+                        summary: result.summary,
+                        output: String::new(),
+                    });
+                    return;
+                }
+                let index = match result
+                    .payload
+                    .and_then(|payload| serde_json::from_value::<PackageIndex>(payload).ok())
+                {
+                    Some(index) => index,
+                    None => {
+                        let summary = "无法解析更新包组件索引".to_owned();
+                        self.inspect_message = Some(summary.clone());
+                        self.result = Some(ResultView {
+                            ok: false,
+                            summary,
+                            output: String::new(),
+                        });
+                        return;
+                    }
+                };
+                let image_count = index
+                    .components
+                    .iter()
+                    .filter(|component| component.component_type == 0)
+                    .count();
+                self.checked = index
+                    .components
+                    .iter()
+                    .map(|component| component.component_type == 0)
+                    .collect();
+                self.inspect_message = Some(format!(
+                    "包内共 {} 个组件, {} 个分区镜像",
+                    index.components.len(),
+                    image_count
+                ));
+                self.index = Some(index);
             }
-            self.result = Some(ResultView {
-                ok: false,
-                summary: result.summary.clone(),
-                output: String::new(),
-            });
-            return;
+            PendingOp::Unpack { output } => {
+                self.result = Some(ResultView {
+                    ok: result.ok,
+                    summary: result.summary,
+                    output: if result.ok { output } else { String::new() },
+                });
+            }
         }
-        if let Some(payload) = result.payload
-            && let Ok(index) = serde_json::from_value::<PackageIndex>(payload)
-        {
-            // 读取包内容成功
-            let image_count = index
-                .components
-                .iter()
-                .filter(|c| c.component_type == 0)
-                .count();
-            self.checked = index
-                .components
-                .iter()
-                .map(|component| component.component_type == 0)
-                .collect();
-            self.inspect_message = Some(format!(
-                "包内共 {} 个组件, {} 个分区镜像",
-                index.components.len(),
-                image_count
-            ));
-            self.index = Some(index);
-            return;
-        }
-        self.result = Some(ResultView {
-            ok: true,
-            summary: result.summary.clone(),
-            output: self.output.trim().to_owned(),
-        });
     }
 
     fn selected_partitions(&self) -> Vec<String> {
@@ -324,6 +393,20 @@ impl PackagePage {
     }
 }
 
+fn layout_label(layout: UpdateLayout) -> &'static str {
+    match layout {
+        UpdateLayout::Auto => "自动检测",
+        UpdateLayout::L1 => "L1",
+        UpdateLayout::L2 => "L2",
+    }
+}
+
+#[derive(Debug, Default)]
+struct PathRowResponse {
+    changed: bool,
+    committed: bool,
+}
+
 fn path_row(
     ui: &mut egui::Ui,
     app: &mut HaucetApp,
@@ -331,15 +414,17 @@ fn path_row(
     value: &mut String,
     button: &str,
     filter: Option<&[&str]>,
-) -> bool {
-    let mut changed = false;
+) -> PathRowResponse {
+    let mut result = PathRowResponse::default();
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).strong());
-        ui.add(
+        let response = ui.add(
             egui::TextEdit::singleline(value)
                 .hint_text("路径或拖放文件到这里")
                 .desired_width(ui.available_width() - 150.0),
         );
+        result.changed |= response.changed();
+        result.committed |= response.lost_focus();
         if ui.button(button).clicked() {
             let filters: &[(&str, &[&str])] = match filter {
                 Some(extensions) => &[("更新包", extensions)],
@@ -352,11 +437,12 @@ fn path_row(
             };
             if let Some(path) = picked {
                 *value = path.display().to_string();
-                changed = true;
+                result.changed = true;
+                result.committed = true;
             }
         }
     });
-    changed
+    result
 }
 
 fn component_type_label(component_type: u8) -> String {
@@ -367,29 +453,3 @@ fn component_type_label(component_type: u8) -> String {
     }
 }
 
-fn optional(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_owned())
-    }
-}
-
-fn default_output(input: &str) -> String {
-    let path = std::path::Path::new(input);
-    let parent = path
-        .parent()
-        .map(|parent| parent.display().to_string())
-        .unwrap_or_default();
-    let stem = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "package".to_owned());
-    let name = format!("{stem}-work");
-    if parent.is_empty() {
-        name
-    } else {
-        format!("{parent}/{name}")
-    }
-}

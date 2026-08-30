@@ -1,9 +1,8 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::package::UpdateLayout;
-use common::{entropy, formats::erofs, package, ramdisk};
-use std::fs;
+use common::{entropy, formats::erofs, fs_util, package, ramdisk};
 use std::path::{Path, PathBuf};
 
 mod fastboot;
@@ -53,7 +52,7 @@ enum Command {
         #[command(subcommand)]
         command: VcomCommand,
     },
-    /// Unpack, repack, patch, or inspect a ramdisk image
+    /// Unpack, repack, or patch a ramdisk image
     #[command(arg_required_else_help = true)]
     Ramdisk {
         #[command(subcommand)]
@@ -96,7 +95,7 @@ enum VcomCommand {
         /// Serial port name, for example COM3
         port: String,
         /// Target address, written as hexadecimal, for example 0x80000000
-        #[arg(value_parser = vcom::parse_addr)]
+        #[arg(value_parser = hisi_vcom::vcom::parse_address)]
         address: u32,
         /// Loader binary to upload
         file: PathBuf,
@@ -112,30 +111,10 @@ struct FullUnpackArgs {
     partitions: Vec<String>,
     #[arg(long, conflicts_with = "partitions")]
     all_erofs: bool,
-    #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
+    #[arg(long, default_value_t = UpdateLayout::Auto)]
     layout: UpdateLayout,
     #[arg(long)]
     force: bool,
-}
-
-#[derive(Debug, Subcommand)]
-enum UpdateBinCommand {
-    /// List the contents of an update binary
-    List {
-        input: PathBuf,
-        #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
-        layout: UpdateLayout,
-    },
-    /// Unpack an update binary into a workspace directory
-    Unpack {
-        input: PathBuf,
-        #[arg(short, long)]
-        out: PathBuf,
-        #[arg(long, value_parser = parse_update_layout, default_value_t = UpdateLayout::Auto)]
-        layout: UpdateLayout,
-        #[arg(long)]
-        force: bool,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -176,7 +155,7 @@ enum RamdiskCommand {
         out: PathBuf,
     },
     /// Patch bin/init_early in a ramdisk image
-    #[command(name = "ramdiskpatch")]
+    #[command(alias = "ramdiskpatch")]
     Patch {
         image: PathBuf,
         binary: PathBuf,
@@ -357,15 +336,11 @@ fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
             }
             0
         }
-        CpioCommands::Test => {
-            if cpio.exists(".backup/init_early") {
-                1
-            } else if cpio.exists("bin/init_early") || cpio.exists("init") {
-                0
-            } else {
-                2
-            }
-        }
+        CpioCommands::Test => match ramdisk::patch_status(&cpio) {
+            ramdisk::RamdiskPatchStatus::Patchable => 0,
+            ramdisk::RamdiskPatchStatus::Patched => 1,
+            ramdisk::RamdiskPatchStatus::Unsupported => 2,
+        },
     };
 
     if status != 0 {
@@ -406,8 +381,8 @@ fn run_vcom_command(command: VcomCommand) -> Result<()> {
 fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
     match command {
         RamdiskCommand::Unpack { image, out, force } => {
-            let image = canonical_path(&image)?;
-            prepare_output_dir(&out, force)?;
+            let image = fs_util::canonical_path(&image)?;
+            fs_util::prepare_dir_excluding(&out, "output directory", force, &[&image])?;
             Ok(ramdisk::unpack(&image, &out)?)
         }
         RamdiskCommand::Repack {
@@ -415,40 +390,13 @@ fn run_ramdisk_command(command: RamdiskCommand) -> Result<()> {
             original_image,
             out,
         } => {
-            let workspace = canonical_path(&workspace)?;
-            let original_image = canonical_path(&original_image)?;
-            let out = absolute_path(&out)?;
+            let workspace = fs_util::canonical_path(&workspace)?;
+            let original_image = fs_util::canonical_path(&original_image)?;
+            let out = fs_util::absolute_path(&out)?;
             Ok(ramdisk::repack(&workspace, &original_image, &out)?)
         }
         RamdiskCommand::Patch { image, binary, out } => Ok(ramdisk::patch(&image, &binary, &out)?),
     }
-}
-
-fn prepare_output_dir(output: &Path, force: bool) -> Result<()> {
-    if output.exists() && fs::read_dir(output)?.next().is_some() {
-        ensure!(force, "output directory is not empty: {}", output.display());
-        fs::remove_dir_all(output)
-            .with_context(|| format!("removing old output directory {}", output.display()))?;
-    }
-    fs::create_dir_all(output)
-        .with_context(|| format!("creating output directory {}", output.display()))
-}
-
-fn canonical_path(path: &Path) -> Result<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("resolving {}", path.display()))
-}
-
-fn absolute_path(path: &Path) -> Result<PathBuf> {
-    if path.is_absolute() {
-        Ok(path.to_owned())
-    } else {
-        Ok(std::env::current_dir()?.join(path))
-    }
-}
-
-fn parse_update_layout(value: &str) -> std::result::Result<UpdateLayout, String> {
-    value.parse()
 }
 
 fn main() {

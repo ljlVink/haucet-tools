@@ -22,13 +22,62 @@ pub(crate) struct HaucetApp {
     pub settings: Settings,
     pub font_loaded: bool,
     pub logo: Option<egui::TextureHandle>,
-    last_result: Option<(ResultOwner, JobResult)>,
+    results: ResultStore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResultOwner {
     Page(Page),
     Image(ImageKind),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobStatus {
+    Cancelled,
+    Succeeded,
+    Failed,
+}
+
+impl From<&JobResult> for JobStatus {
+    fn from(result: &JobResult) -> Self {
+        if result.cancelled {
+            Self::Cancelled
+        } else if result.ok {
+            Self::Succeeded
+        } else {
+            Self::Failed
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ResultStore {
+    pending: Vec<(ResultOwner, JobResult)>,
+    latest: Option<JobStatus>,
+}
+
+impl ResultStore {
+    fn insert(&mut self, owner: ResultOwner, result: JobResult) {
+        self.remove(owner);
+        self.latest = Some(JobStatus::from(&result));
+        self.pending.push((owner, result));
+    }
+
+    fn remove(&mut self, owner: ResultOwner) {
+        self.pending.retain(|(stored, _)| *stored != owner);
+    }
+
+    fn take(&mut self, owner: ResultOwner) -> Option<JobResult> {
+        let index = self
+            .pending
+            .iter()
+            .position(|(stored, _)| *stored == owner)?;
+        Some(self.pending.remove(index).1)
+    }
+
+    fn latest(&self) -> Option<JobStatus> {
+        self.latest
+    }
 }
 
 impl HaucetApp {
@@ -62,7 +111,7 @@ impl HaucetApp {
             settings: Settings::load(),
             font_loaded,
             logo,
-            last_result: None,
+            results: ResultStore::default(),
         }
     }
 }
@@ -129,7 +178,7 @@ impl HaucetApp {
                         "[失败]"
                     };
                     self.push_log(format!("{mark} {}", result.summary));
-                    self.last_result = Some((owner, result));
+                    self.results.insert(owner, result);
                     finished = true;
                 }
             }
@@ -155,12 +204,12 @@ impl HaucetApp {
                 self.job_owner = owner;
                 self.push_log(format!("── 开始任务: {label}"));
                 self.job = Some(running);
-                self.last_result = None;
+                self.results.remove(owner);
                 true
             }
             Err(error) => {
                 self.push_log(format!("[错误] 无法启动任务: {error:#}"));
-                self.last_result = Some((
+                self.results.insert(
                     owner,
                     JobResult {
                         ok: false,
@@ -168,7 +217,7 @@ impl HaucetApp {
                         summary: format!("无法启动任务: {error:#}"),
                         payload: None,
                     },
-                ));
+                );
                 false
             }
         }
@@ -181,21 +230,11 @@ impl HaucetApp {
     }
 
     pub fn take_result(&mut self, page: Page) -> Option<JobResult> {
-        match &self.last_result {
-            Some((ResultOwner::Page(owner), _)) if *owner == page => {
-                self.last_result.take().map(|(_, result)| result)
-            }
-            _ => None,
-        }
+        self.results.take(ResultOwner::Page(page))
     }
 
     pub fn take_image_result(&mut self, kind: ImageKind) -> Option<JobResult> {
-        match &self.last_result {
-            Some((ResultOwner::Image(owner), _)) if *owner == kind => {
-                self.last_result.take().map(|(_, result)| result)
-            }
-            _ => None,
-        }
+        self.results.take(ResultOwner::Image(kind))
     }
 
     pub fn nav(&mut self, page: Page) {
@@ -267,13 +306,11 @@ impl HaucetApp {
     fn window_title(&self) -> String {
         let status = if let Some(job) = &self.job {
             format!("运行中 {}s", job.elapsed().as_secs())
-        } else if let Some((_, result)) = &self.last_result {
-            if result.cancelled {
-                "上次任务已取消".to_owned()
-            } else if result.ok {
-                "上次任务成功".to_owned()
-            } else {
-                "上次任务失败".to_owned()
+        } else if let Some(status) = self.results.latest() {
+            match status {
+                JobStatus::Cancelled => "上次任务已取消".to_owned(),
+                JobStatus::Succeeded => "上次任务成功".to_owned(),
+                JobStatus::Failed => "上次任务失败".to_owned(),
             }
         } else {
             "空闲".to_owned()

@@ -19,6 +19,75 @@ pub fn prepare_dir(dir: &Path, what: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn prepare_dir_excluding(
+    dir: &Path,
+    what: &str,
+    force: bool,
+    protected_paths: &[&Path],
+) -> Result<()> {
+    for protected in protected_paths {
+        ensure_output_does_not_contain(protected, dir)?;
+    }
+    prepare_dir(dir, what, force)
+}
+
+pub fn ensure_output_does_not_contain(input: &Path, output: &Path) -> Result<()> {
+    let resolved_input = canonical_path(input)?;
+    let resolved_output = resolve_path_allow_missing(output)?;
+    ensure!(
+        !resolved_input.starts_with(&resolved_output),
+        "refusing to use output directory {} because it contains the input file {}",
+        output.display(),
+        input.display()
+    );
+    Ok(())
+}
+
+pub fn canonical_path(path: &Path) -> Result<PathBuf> {
+    path.canonicalize()
+        .with_context(|| format!("resolving {}", path.display()))
+}
+
+pub fn absolute_path(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_owned())
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
+}
+
+fn resolve_path_allow_missing(path: &Path) -> Result<PathBuf> {
+    let absolute = absolute_path(path)?;
+    let mut resolved = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                resolved.push(component.as_os_str());
+                if matches!(component, Component::Normal(_))
+                    && resolved
+                        .try_exists()
+                        .with_context(|| format!("checking path {}", resolved.display()))?
+                {
+                    resolved = canonical_path(&resolved)?;
+                }
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ensure!(
+                    matches!(
+                        resolved.components().next_back(),
+                        Some(Component::Normal(_))
+                    ),
+                    "path escapes the filesystem root: {}",
+                    path.display()
+                );
+                resolved.pop();
+            }
+        }
+    }
+    Ok(resolved)
+}
+
 pub fn is_simple_name(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('/')

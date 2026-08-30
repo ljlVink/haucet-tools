@@ -13,6 +13,33 @@ pub const MAX_DATA_LEN: usize = 0x400;
 
 const ACK_TIMEOUT: Duration = Duration::from_secs(10);
 
+pub fn parse_address(value: &str) -> Result<u32, String> {
+    let value = value.trim();
+    let hex = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    u32::from_str_radix(hex, 16).map_err(|error| error.to_string())
+}
+
+fn checked_upload_length(address: u32, data_len: usize) -> std::io::Result<u32> {
+    let length = u32::try_from(data_len).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "VCOM upload exceeds the 4 GiB protocol limit",
+        )
+    })?;
+    if let Some(last_offset) = length.checked_sub(1) {
+        address.checked_add(last_offset).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "VCOM upload range exceeds the 32-bit address space",
+            )
+        })?;
+    }
+    Ok(length)
+}
+
 pub fn head_command(address: u32, length: u32) -> Vec<u8> {
     let mut cmd = Vec::with_capacity(12);
     cmd.extend_from_slice(&[0xFE, 0x00, 0xFF, 0x01]);
@@ -74,12 +101,13 @@ pub fn upload(
     log: &mut dyn FnMut(&str),
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<(), Error> {
+    let length = checked_upload_length(address, data.len())?;
     log(&format!(
         "Uploading {} bytes to 0x{:08X}",
         data.len(),
         address
     ));
-    write_and_verify(transport, &head_command(address, data.len() as u32), log)?;
+    write_and_verify(transport, &head_command(address, length), log)?;
 
     let mut seq: u64 = 0;
     let mut sent: u64 = 0;

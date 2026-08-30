@@ -1,9 +1,14 @@
 use crate::app::HaucetApp;
 use crate::pages::images::ImageKind;
 use crate::pages::{ResultView, run_button};
-use crate::util::{human_size, message_box, open_in_file_manager};
+use crate::util::{
+    human_size, message_box, open_in_file_manager, sibling_output_path, trimmed_non_empty,
+    update_derived_path,
+};
 use common::formats::erofs::ErofsManifest;
 use eframe::egui;
+use std::path::Path;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ErofsTab {
@@ -12,12 +17,19 @@ pub enum ErofsTab {
     Repack,
 }
 
+#[derive(Debug)]
+enum PendingOp {
+    Unpack { output: String },
+    Repack { output: String },
+}
+
 #[derive(Debug, Default)]
 pub struct ErofsPage {
     pub tab: ErofsTab,
     pub unpack: UnpackState,
     pub repack: RepackState,
     pub result: Option<ResultView>,
+    pending: Option<PendingOp>,
 }
 
 #[derive(Debug, Default)]
@@ -26,6 +38,7 @@ pub struct UnpackState {
     pub output: String,
     pub force: bool,
     pub tools_dir: String,
+    auto_output: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -37,9 +50,33 @@ pub struct RepackState {
     pub manifest: Option<ErofsManifest>,
     pub manifest_error: Option<String>,
     pub manifest_from: String,
+    manifest_stamp: Option<ManifestStamp>,
+    auto_output: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ManifestStamp {
+    Missing,
+    Present {
+        len: u64,
+        modified: Option<SystemTime>,
+    },
 }
 
 impl ErofsPage {
+    pub fn select_unpack_image(&mut self, image: String) {
+        self.unpack.image = image;
+        self.update_unpack_output();
+    }
+
+    pub fn select_workspace(&mut self, workspace: String) {
+        self.repack.workspace = workspace;
+        self.repack.manifest = None;
+        self.repack.manifest_error = None;
+        self.repack.manifest_from.clear();
+        self.repack.manifest_stamp = None;
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         self.poll_result(app);
         self.poll_manifest();
@@ -65,25 +102,26 @@ impl ErofsPage {
         let Some(result) = app.take_image_result(ImageKind::Erofs) else {
             return;
         };
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        self.apply_result(pending, result);
+    }
+
+    fn apply_result(&mut self, pending: PendingOp, result: crate::job::JobResult) {
         if !result.ok {
             self.result = Some(ResultView {
                 ok: false,
-                summary: result.summary.clone(),
+                summary: result.summary,
                 output: String::new(),
             });
             return;
         }
-        if let Some(payload) = result.payload
-            && let Ok(manifest) = serde_json::from_value::<ErofsManifest>(payload)
-        {
-            self.repack.manifest = Some(manifest);
-        }
         self.result = Some(ResultView {
             ok: true,
-            summary: result.summary.clone(),
-            output: match self.tab {
-                ErofsTab::Unpack => self.unpack.output.trim().to_owned(),
-                ErofsTab::Repack => self.repack.output.trim().to_owned(),
+            summary: result.summary,
+            output: match pending {
+                PendingOp::Unpack { output } | PendingOp::Repack { output } => output,
             },
         });
     }
@@ -94,24 +132,26 @@ impl ErofsPage {
             self.repack.manifest = None;
             self.repack.manifest_error = None;
             self.repack.manifest_from.clear();
+            self.repack.manifest_stamp = None;
             return;
         }
-        if workspace == self.repack.manifest_from && self.repack.manifest.is_some() {
+        let stamp = manifest_stamp(Path::new(&workspace));
+        if workspace == self.repack.manifest_from
+            && self.repack.manifest_stamp.as_ref() == Some(&stamp)
+        {
             return;
         }
+        self.repack.manifest_from = workspace.clone();
+        self.repack.manifest_stamp = Some(stamp);
         match common::formats::erofs::read_manifest(std::path::Path::new(&workspace)) {
             Ok(manifest) => {
-                if self.repack.output.trim().is_empty() {
-                    self.repack.output =
-                        default_repack_output(&workspace, &manifest.original_file_name);
-                }
+                let next = default_repack_output(&workspace, &manifest.original_file_name);
+                update_derived_path(&mut self.repack.output, &mut self.repack.auto_output, next);
                 self.repack.manifest_error = None;
-                self.repack.manifest_from = workspace.clone();
                 self.repack.manifest = Some(manifest);
             }
             Err(error) => {
                 self.repack.manifest = None;
-                self.repack.manifest_from = workspace.clone();
                 self.repack.manifest_error = Some(format!("{error:#}"));
             }
         }
@@ -125,26 +165,23 @@ impl ErofsPage {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("镜像文件").strong());
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::singleline(&mut self.unpack.image)
                     .hint_text("分区镜像或拖放文件到这里")
                     .desired_width(ui.available_width() - 240.0),
             );
+            if response.changed() {
+                self.update_unpack_output();
+            }
             if ui.button("选择文件…").clicked()
                 && let Some(path) = app.pick_file("选择 EROFS 镜像", &[("镜像", &["img"])])
             {
-                self.unpack.image = path.display().to_string();
-                if self.unpack.output.trim().is_empty() {
-                    self.unpack.output = default_workspace(&self.unpack.image);
-                }
+                self.select_unpack_image(path.display().to_string());
             }
         });
         let drops = app.take_drops(ui.ctx());
         if let Some(path) = drops.first() {
-            self.unpack.image = path.display().to_string();
-            if self.unpack.output.trim().is_empty() {
-                self.unpack.output = default_workspace(&self.unpack.image);
-            }
+            self.select_unpack_image(path.display().to_string());
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -167,12 +204,17 @@ impl ErofsPage {
         let ready = !app.job_running()
             && !self.unpack.image.trim().is_empty()
             && !self.unpack.output.trim().is_empty();
+        let output = self.unpack.output.trim().to_owned();
         if run_button(ui, "开始解包", ready, None).clicked() {
+            self.pending = Some(PendingOp::Unpack {
+                output: output.clone(),
+            });
+            self.result = None;
             app.start_job(crate::worker::JobOp::ErofsUnpack {
                 image: self.unpack.image.trim().to_owned(),
-                output: self.unpack.output.trim().to_owned(),
+                output,
                 force: self.unpack.force,
-                tools_dir: optional(&self.unpack.tools_dir),
+                tools_dir: trimmed_non_empty(&self.unpack.tools_dir),
             });
         }
     }
@@ -192,16 +234,14 @@ impl ErofsPage {
             if ui.button("选择目录…").clicked()
                 && let Some(dir) = app.pick_dir("选择 EROFS 工作区")
             {
-                self.repack.workspace = dir.display().to_string();
-                self.repack.manifest = None;
+                self.select_workspace(dir.display().to_string());
             }
         });
         let drops = app.take_drops(ui.ctx());
         if let Some(path) = drops.first()
             && path.is_dir()
         {
-            self.repack.workspace = path.display().to_string();
-            self.repack.manifest = None;
+            self.select_workspace(path.display().to_string());
         }
         ui.add_space(6.0);
         if let Some(manifest) = &self.repack.manifest {
@@ -259,13 +299,18 @@ impl ErofsPage {
             && !self.repack.workspace.trim().is_empty()
             && !self.repack.output.trim().is_empty()
             && self.repack.manifest.is_some();
+        let output = self.repack.output.trim().to_owned();
         if run_button(ui, "重新打包", ready, Some("需要先选择有效的工作区")).clicked()
         {
+            self.pending = Some(PendingOp::Repack {
+                output: output.clone(),
+            });
+            self.result = None;
             app.start_job(crate::worker::JobOp::ErofsRepack {
                 workspace: self.repack.workspace.trim().to_owned(),
-                output: self.repack.output.trim().to_owned(),
+                output,
                 allow_grow: self.repack.allow_grow,
-                tools_dir: optional(&self.repack.tools_dir),
+                tools_dir: trimmed_non_empty(&self.repack.tools_dir),
             });
         }
     }
@@ -284,32 +329,20 @@ impl ErofsPage {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), &result.summary);
         }
     }
-}
 
-fn optional(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_owned())
+    fn update_unpack_output(&mut self) {
+        let next = sibling_output_path(&self.unpack.image, "erofs", "-work");
+        update_derived_path(&mut self.unpack.output, &mut self.unpack.auto_output, next);
     }
 }
 
-fn default_workspace(image: &str) -> String {
-    let path = std::path::Path::new(image);
-    let parent = path
-        .parent()
-        .map(|parent| parent.display().to_string())
-        .unwrap_or_default();
-    let stem = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "erofs".to_owned());
-    let name = format!("{stem}-work");
-    if parent.is_empty() {
-        name
-    } else {
-        format!("{parent}/{name}")
+fn manifest_stamp(workspace: &Path) -> ManifestStamp {
+    match std::fs::metadata(workspace.join("haucet-erofs.json")) {
+        Ok(metadata) => ManifestStamp::Present {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        },
+        Err(_) => ManifestStamp::Missing,
     }
 }
 

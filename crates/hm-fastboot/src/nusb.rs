@@ -25,6 +25,26 @@ pub async fn devices() -> Result<impl Iterator<Item = DeviceInfo>, nusb::Error> 
         .filter(|d| NusbFastBoot::find_fastboot_interface(d).is_some()))
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DeviceSelectionError {
+    #[error(
+        "no fastboot device found: make sure the device is in fastboot mode and connected via USB"
+    )]
+    NotFound,
+    #[error("multiple fastboot devices found; disconnect all but the intended target and retry")]
+    Multiple,
+}
+
+pub fn require_single_device<T>(
+    mut devices: impl Iterator<Item = T>,
+) -> Result<T, DeviceSelectionError> {
+    let device = devices.next().ok_or(DeviceSelectionError::NotFound)?;
+    if devices.next().is_some() {
+        return Err(DeviceSelectionError::Multiple);
+    }
+    Ok(device)
+}
+
 pub fn clean_device_string(s: &str) -> Option<String> {
     if s.is_empty() {
         return None;

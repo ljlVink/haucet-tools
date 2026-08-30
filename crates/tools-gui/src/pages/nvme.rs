@@ -21,37 +21,18 @@ impl ValueMode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NvmePage {
     image: String,
     filter: String,
     key: String,
     value: String,
     value_mode: ValueMode,
-    sync_all_blocks: bool,
     summary: Option<NveImageSummary>,
     selected_slot: Option<usize>,
     result: Option<ResultView>,
     inspect_pending: bool,
     pending_edit: bool,
-}
-
-impl Default for NvmePage {
-    fn default() -> Self {
-        Self {
-            image: String::new(),
-            filter: String::new(),
-            key: String::new(),
-            value: String::new(),
-            value_mode: ValueMode::default(),
-            sync_all_blocks: true,
-            summary: None,
-            selected_slot: None,
-            result: None,
-            inspect_pending: false,
-            pending_edit: false,
-        }
-    }
 }
 
 impl NvmePage {
@@ -134,7 +115,13 @@ impl NvmePage {
         let blocks = format!("{} / {}", summary.active_blocks, summary.total_blocks);
         let entries = summary.valid_items.to_string();
         let version = format!("版本 {}", summary.version);
-        let (crc_value, crc_detail, crc_color) = if summary.crc_invalid == 0 {
+        let (crc_value, crc_detail, crc_color) = if !summary.crc_supported {
+            (
+                "未启用".to_owned(),
+                "检测到的副本未声明 CRC32C".to_owned(),
+                None,
+            )
+        } else if summary.crc_invalid == 0 {
             (
                 "全部通过".to_owned(),
                 format!("{} 项已校验", summary.crc_valid),
@@ -175,7 +162,7 @@ impl NvmePage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(225, 155, 60),
-                "镜像中存在 CRC32C 异常条目；写入所选条目时会重新计算对应副本的校验值。",
+                "镜像中存在 CRC32C 异常副本；异常副本不会作为当前数据或写入来源。",
             );
         }
     }
@@ -268,9 +255,8 @@ impl NvmePage {
                     && !self.key.trim().is_empty()
                     && self.summary.is_some();
                 ui.horizontal_wrapped(|ui| {
-                    ui.checkbox(&mut self.sync_all_blocks, "同步全部活动副本");
                     ui.label(
-                        egui::RichText::new("写入前会自动创建带时间戳的备份")
+                        egui::RichText::new("写入下一代副本前会自动创建带时间戳的备份")
                             .small()
                             .weak(),
                     );
@@ -279,7 +265,7 @@ impl NvmePage {
                             ui,
                             "写入并备份",
                             ready,
-                            Some("修改源镜像中的条目并重新计算 CRC32C"),
+                            Some("修改源镜像中的条目，并按头部声明规则更新校验"),
                         )
                         .clicked()
                         {
@@ -290,7 +276,6 @@ impl NvmePage {
                                 key: self.key.trim().to_owned(),
                                 value: self.value.clone(),
                                 value_format: self.value_mode.spec().to_owned(),
-                                sync_all_blocks: self.sync_all_blocks,
                             });
                         }
                     });
@@ -430,12 +415,21 @@ impl NvmePage {
                         }
                     });
                     row.col(|ui| {
-                        let (label, color) = if item.crc_valid {
-                            ("通过", egui::Color32::from_rgb(95, 190, 125))
+                        if !item.crc_supported {
+                            ui.label(egui::RichText::new("未启用").weak());
+                        } else if item.crc_valid {
+                            ui.label(
+                                egui::RichText::new("通过")
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(95, 190, 125)),
+                            );
                         } else {
-                            ("异常", egui::Color32::from_rgb(225, 90, 90))
-                        };
-                        ui.label(egui::RichText::new(label).strong().color(color));
+                            ui.label(
+                                egui::RichText::new("异常")
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(225, 90, 90)),
+                            );
+                        }
                     });
                     let response = row
                         .response()
@@ -448,7 +442,7 @@ impl NvmePage {
     }
 
     fn render_blocks(&self, ui: &mut egui::Ui, blocks: &[NveBlockSummary]) {
-        egui::CollapsingHeader::new(format!("活动副本（{}）", blocks.len()))
+        egui::CollapsingHeader::new(format!("检测到的副本（{}）", blocks.len()))
             .id_salt("nvme-blocks")
             .default_open(false)
             .show(ui, |ui| {
@@ -494,10 +488,14 @@ impl NvmePage {
                                     ui.label(block.valid_items.to_string());
                                 });
                                 row.col(|ui| {
-                                    ui.label(format!(
-                                        "{} 通过 / {} 异常",
-                                        block.crc_valid, block.crc_invalid
-                                    ));
+                                    if block.crc_supported {
+                                        ui.label(format!(
+                                            "{} 通过 / {} 异常",
+                                            block.crc_valid, block.crc_invalid
+                                        ));
+                                    } else {
+                                        ui.label("未启用");
+                                    }
                                 });
                             });
                         }
@@ -516,10 +514,8 @@ impl NvmePage {
             egui::Color32::from_rgb(230, 90, 90)
         };
         message_box(ui, color, &result.summary);
-        if result.ok && !result.output.is_empty() {
-            if ui.button("打开备份位置").clicked() {
-                open_in_file_manager(std::path::Path::new(&result.output));
-            }
+        if result.ok && !result.output.is_empty() && ui.button("打开备份位置").clicked() {
+            open_in_file_manager(std::path::Path::new(&result.output));
         }
     }
 

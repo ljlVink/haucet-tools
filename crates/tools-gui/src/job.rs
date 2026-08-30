@@ -1,11 +1,11 @@
 use crate::worker::{self, JobOp, JobSpec, WorkerResult};
 use anyhow::{Context, Result};
 use common::process::hide_command_window;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -24,9 +24,8 @@ pub struct JobResult {
 }
 
 pub struct RunningJob {
-    child: Child,
+    worker: ProcessTreeChild,
     rx: Receiver<JobEvent>,
-    _tx: Sender<JobEvent>,
     cancelled: Arc<AtomicBool>,
     started: Instant,
     pub op: JobOp,
@@ -39,8 +38,7 @@ impl RunningJob {
 
     pub fn cancel(&mut self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.worker.terminate();
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -48,31 +46,57 @@ impl RunningJob {
     }
 }
 
+impl Drop for RunningJob {
+    fn drop(&mut self) {
+        self.worker.terminate();
+    }
+}
+
 pub fn start(op: JobOp) -> Result<RunningJob> {
     let spec = JobSpec { op: op.clone() };
+    let json = serde_json::to_string(&spec)?;
     let mut command = Command::new(std::env::current_exe().context("定位当前可执行文件")?);
     hide_command_window(&mut command);
-    let mut child = command
+    command
         .env(worker::WORKER_ENV, "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("启动后台工作进程")?;
+        .stderr(Stdio::piped());
+    let mut worker = ProcessTreeChild::spawn(&mut command).context("启动后台工作进程")?;
 
-    let mut stdin = child.stdin.take().context("无法获取工作进程的标准输入")?;
-    let json = serde_json::to_string(&spec)?;
-    stdin
-        .write_all(json.as_bytes())
-        .context("向工作进程发送任务")?;
-    drop(stdin);
+    let pipes = (|| -> Result<_> {
+        let mut stdin = worker
+            .child
+            .stdin
+            .take()
+            .context("无法获取工作进程的标准输入")?;
+        stdin
+            .write_all(json.as_bytes())
+            .context("向工作进程发送任务")?;
+        drop(stdin);
 
-    let stdout = child.stdout.take().context("无法获取工作进程的标准输出")?;
-    let stderr = child.stderr.take().context("无法获取工作进程的错误输出")?;
+        let stdout = worker
+            .child
+            .stdout
+            .take()
+            .context("无法获取工作进程的标准输出")?;
+        let stderr = worker
+            .child
+            .stderr
+            .take()
+            .context("无法获取工作进程的错误输出")?;
+        Ok((stdout, stderr))
+    })();
+    let (stdout, stderr) = match pipes {
+        Ok(pipes) => pipes,
+        Err(error) => {
+            worker.terminate();
+            return Err(error);
+        }
+    };
 
     let (tx, rx) = mpsc::channel::<JobEvent>();
     let tx_err = tx.clone();
-    let tx_holder = tx.clone();
     let cancelled = Arc::new(AtomicBool::new(false));
     let cancelled_reader = cancelled.clone();
 
@@ -135,11 +159,158 @@ pub fn start(op: JobOp) -> Result<RunningJob> {
     });
 
     Ok(RunningJob {
-        child,
+        worker,
         rx,
-        _tx: tx_holder,
         cancelled,
         started: Instant::now(),
         op,
     })
+}
+
+struct ProcessTreeChild {
+    child: Child,
+    containment: ProcessContainment,
+    terminated: bool,
+}
+
+impl ProcessTreeChild {
+    fn spawn(command: &mut Command) -> io::Result<Self> {
+        let (child, containment) = ProcessContainment::spawn(command)?;
+        Ok(Self {
+            child,
+            containment,
+            terminated: false,
+        })
+    }
+
+    fn terminate(&mut self) {
+        if std::mem::replace(&mut self.terminated, true) {
+            return;
+        }
+        self.containment.terminate();
+        // Keep this fallback for platforms where the process has already left
+        // its containment object, then always reap the direct child.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+impl Drop for ProcessTreeChild {
+    fn drop(&mut self) {
+        self.terminate();
+    }
+}
+
+#[cfg(unix)]
+struct ProcessContainment {
+    process_group: Option<libc::pid_t>,
+}
+
+#[cfg(unix)]
+impl ProcessContainment {
+    fn spawn(command: &mut Command) -> io::Result<(Child, Self)> {
+        use std::os::unix::process::CommandExt;
+
+        command.process_group(0);
+        let mut child = command.spawn()?;
+        let process_group = match libc::pid_t::try_from(child.id()) {
+            Ok(process_group) => process_group,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io::Error::other("child process ID exceeds pid_t"));
+            }
+        };
+        Ok((
+            child,
+            Self {
+                process_group: Some(process_group),
+            },
+        ))
+    }
+
+    fn terminate(&mut self) {
+        if let Some(process_group) = self.process_group.take() {
+            // SAFETY: `process_group` is the positive PID returned for the
+            // child that `process_group(0)` made the leader of its own group.
+            unsafe {
+                libc::kill(-process_group, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+struct ProcessContainment {
+    job: Option<std::os::windows::io::OwnedHandle>,
+}
+
+#[cfg(windows)]
+impl ProcessContainment {
+    fn spawn(command: &mut Command) -> io::Result<(Child, Self)> {
+        use std::mem::size_of;
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+
+        // SAFETY: null security attributes/name create a private job object.
+        let raw_job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if raw_job.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `raw_job` is a newly-created, owned Win32 handle.
+        let job = unsafe { OwnedHandle::from_raw_handle(raw_job) };
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `limits` has the structure and size required by the selected
+        // information class, and the job handle remains alive for the call.
+        let configured = unsafe {
+            SetInformationJobObject(
+                job.as_raw_handle(),
+                JobObjectExtendedLimitInformation,
+                std::ptr::from_ref(&limits).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let mut child = command.spawn()?;
+        // The GUI worker blocks while reading its job from stdin. Assignment
+        // therefore completes before it can launch any EROFS subprocess.
+        // SAFETY: both handles are valid and remain alive for this call.
+        let assigned =
+            unsafe { AssignProcessToJobObject(job.as_raw_handle(), child.as_raw_handle()) };
+        if assigned == 0 {
+            let error = io::Error::last_os_error();
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+
+        Ok((child, Self { job: Some(job) }))
+    }
+
+    fn terminate(&mut self) {
+        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE terminates every process still in
+        // the job, including grandchildren spawned by external EROFS tools.
+        drop(self.job.take());
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+struct ProcessContainment;
+
+#[cfg(not(any(unix, windows)))]
+impl ProcessContainment {
+    fn spawn(command: &mut Command) -> io::Result<(Child, Self)> {
+        command.spawn().map(|child| (child, Self))
+    }
+
+    fn terminate(&mut self) {}
 }

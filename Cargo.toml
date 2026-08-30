@@ -30,6 +30,7 @@ crc32c = "0.6"
 eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow"] }
 egui = "0.32"
 flate2 = { version = "1", features = ["zlib-rs"] }
+fs2 = "0.4"
 hex = "0.4"
 libc = "0.2"
 lz4 = "1.28"

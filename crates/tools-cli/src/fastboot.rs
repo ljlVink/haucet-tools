@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use hm_fastboot::nusb::{FlashEvent, NusbFastBoot, clean_device_string};
+use hm_fastboot::nusb::{FlashEvent, NusbFastBoot, clean_device_string, require_single_device};
 use std::path::Path;
 
 pub async fn devices() -> Result<()> {
@@ -34,7 +34,7 @@ pub async fn devices() -> Result<()> {
 }
 
 pub async fn get_var(var: &str) -> Result<()> {
-    let mut fb = open_first().await?;
+    let mut fb = open_only().await?;
     let value = fb
         .get_var(var)
         .await
@@ -44,7 +44,7 @@ pub async fn get_var(var: &str) -> Result<()> {
 }
 
 pub async fn flash(partition: &str, image: &Path) -> Result<()> {
-    let mut fb = open_first().await?;
+    let mut fb = open_only().await?;
     let mut progress = |event: FlashEvent<'_>| match event {
         FlashEvent::Message(msg) => println!("{msg}"),
         FlashEvent::Part { index, total } => println!("Progress: {index}/{total} parts completed"),
@@ -57,14 +57,14 @@ pub async fn flash(partition: &str, image: &Path) -> Result<()> {
 }
 
 pub async fn reboot() -> Result<()> {
-    let mut fb = open_first().await?;
+    let mut fb = open_only().await?;
     fb.reboot().await.context("failed to send reboot command")?;
     println!("Reboot command sent");
     Ok(())
 }
 
 pub async fn oem(args: &[String]) -> Result<()> {
-    let mut fb = open_first().await?;
+    let mut fb = open_only().await?;
     let command = args.join(" ");
     let lines = fb
         .oem(&command)
@@ -77,15 +77,11 @@ pub async fn oem(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-async fn open_first() -> Result<NusbFastBoot> {
-    let mut devices = hm_fastboot::nusb::devices()
+async fn open_only() -> Result<NusbFastBoot> {
+    let devices = hm_fastboot::nusb::devices()
         .await
         .context("failed to enumerate USB devices")?;
-    let info = devices.next().ok_or_else(|| {
-        anyhow::anyhow!(
-            "no fastboot device found: make sure the device is in fastboot mode and connected via USB"
-        )
-    })?;
+    let info = require_single_device(devices)?;
     let product = info
         .product_string()
         .map(|s| clean_device_string(s).unwrap_or_else(|| s.to_owned()))
