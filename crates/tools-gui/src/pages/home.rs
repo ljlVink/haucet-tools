@@ -113,7 +113,7 @@ impl HomePage {
     }
 
     fn detection_card(
-        &mut self,
+        &self,
         ui: &mut egui::Ui,
         app: &mut HaucetApp,
         detection: &detect::Detection,
@@ -137,10 +137,6 @@ impl HomePage {
                         if ui.button(label).clicked() {
                             apply_action(app, page, kind, &detection.path);
                         }
-                    }
-                    if ui.button("重新识别").clicked() {
-                        self.detection =
-                            Some(detect::detect(std::path::Path::new(&detection.path)));
                     }
                 });
             });
