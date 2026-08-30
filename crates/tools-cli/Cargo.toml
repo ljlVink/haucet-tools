@@ -16,3 +16,6 @@ common = { path = "../tools-common" }
 hm-fastboot = { path = "../hm-fastboot" }
 hisi-vcom = { path = "../hisi-vcom" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[build-dependencies]
+winresource = { version = "0.1", default-features = false }

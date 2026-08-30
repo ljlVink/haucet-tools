@@ -640,6 +640,7 @@ dependencies = [
  "hisi-vcom",
  "hm-fastboot",
  "tokio",
+ "winresource",
 ]
 
 [[package]]
