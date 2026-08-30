@@ -5,8 +5,7 @@
 
 <h1 align="center">Haucet Tools</h1>
 
-
-Rust tools for Huawei/HarmonyOS `update_full_base.zip`, `update.bin`, EROFS partition images, and HVB ramdisk images.
+Haucet Tools is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and maintenance. It unpacks HarmonyOS update packages, inspects and rebuilds EROFS and ramdisk images, edits CPIO archives and NVE data, inspects OEMINFO and partition metadata, flashes images via Fastboot, and uploads loaders via HiSilicon VCOM.
 
 ## Examples
 
@@ -22,6 +21,8 @@ haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
 haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
 haucet-tools partition-info rvt.img
 haucet-tools partition-info ptable.img
+haucet-tools oeminfo oeminfo.img
+haucet-tools oeminfo oeminfo.img --preview
 haucet-tools cpio ramdisk.cpio ls --recursive /
 haucet-tools fastboot devices
 haucet-tools fastboot flash updater updater_vendor.img
@@ -56,6 +57,7 @@ The initial release rebuilds partition images. It does not create a newly signed
 - [OpenHarmony update_packaging_tools](https://gitcode.com/openharmony/update_packaging_tools) - HarmonyOS/OpenHarmony update package format behavior.
 - [OpenHarmony startup_hvb](https://gitcode.com/openharmony/startup_hvb) - HVB header, certificate, and footer format behavior.
 - [R0rt1z2/hisi-nve](https://github.com/R0rt1z2/hisi-nve) - Huawei NVE layout and update behavior.
+- [ud3v0id/huawei-oeminfo-tool](https://github.com/ud3v0id/huawei-oeminfo-tool) - OEMINFO block layout and payload classification reference.
 - [Huawei HarmonyOS Sans](https://developer.huawei.com/consumer/cn/design/resource/) ([archived source package](https://github.com/ajacocks/harmonyos-sans-font)) - GUI font; its license is separate from the program license.
 
 ## License
