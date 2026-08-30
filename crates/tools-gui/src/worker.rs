@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use common::formats::{cpio, erofs, header::check_fmt_full};
 use common::package::UpdateLayout;
 use common::tools::ToolPaths;
-use common::{entropy, fs_util, nvme, package, partition, ramdisk};
+use common::{entropy, fs_util, nvme, oeminfo, package, partition, ramdisk};
 use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
 use hisi_vcom::vcom;
 use serde::{Deserialize, Serialize};
@@ -63,6 +63,14 @@ pub enum JobOp {
     },
     NvmeInspect {
         image: String,
+    },
+    OemInfoInspect {
+        image: String,
+    },
+    OemInfoExportImage {
+        image: String,
+        block: oeminfo::OemInfoBlockSummary,
+        output: String,
     },
     NvmeEdit {
         image: String,
@@ -312,6 +320,28 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 ),
                 summary,
             )
+        }
+        JobOp::OemInfoInspect { image } => {
+            let summary = oeminfo::inspect(Path::new(image))?;
+            summary_payload(
+                format!(
+                    "OEMINFO: {} 个数据块（活动 {}，非活动 {}）",
+                    summary.total_blocks, summary.active_blocks, summary.inactive_blocks
+                ),
+                summary,
+            )
+        }
+        JobOp::OemInfoExportImage {
+            image,
+            block,
+            output,
+        } => {
+            oeminfo::export_embedded_image(Path::new(image), block, Path::new(output))?;
+            Ok(WorkerResult {
+                ok: true,
+                summary: format!("OEMINFO 图片已导出到 {output}"),
+                payload: None,
+            })
         }
         JobOp::NvmeEdit {
             image,

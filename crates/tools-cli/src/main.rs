@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::package::UpdateLayout;
-use common::{entropy, formats::erofs, fs_util, package, ramdisk};
+use common::{entropy, formats::erofs, fs_util, oeminfo, package, ramdisk};
 use std::path::{Path, PathBuf};
 
 mod fastboot;
@@ -45,6 +45,14 @@ enum Command {
     /// Calculate Shannon entropy for a file
     #[command(arg_required_else_help = true)]
     Entropy { file: PathBuf },
+    /// Inspect blocks and A/B copies in a Huawei/Honor OEMINFO image
+    #[command(arg_required_else_help = true)]
+    Oeminfo {
+        image: PathBuf,
+        /// Show a sanitized preview for text-like payloads
+        #[arg(short, long)]
+        preview: bool,
+    },
     /// Operate on a device connected in fastboot mode
     #[command(arg_required_else_help = true)]
     Fastboot {
@@ -286,6 +294,74 @@ fn run_entropy_command(file: PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn run_oeminfo_command(image: PathBuf, preview: bool) -> Result<()> {
+    let summary = oeminfo::inspect(&image)?;
+    println!("file: {}", image.display());
+    println!(
+        "size: {} bytes (0x{:X})",
+        summary.file_size, summary.file_size
+    );
+    println!(
+        "banks: 2 x {} bytes (0x{:X})",
+        summary.region_size, summary.region_size
+    );
+    println!(
+        "blocks: {} ({} active, {} inactive; A {}, B {}, outside {})",
+        summary.total_blocks,
+        summary.active_blocks,
+        summary.inactive_blocks,
+        summary.region_a_blocks,
+        summary.region_b_blocks,
+        summary.unknown_region_blocks
+    );
+    println!(
+        "layouts: {} standard, {} compact, {} reused",
+        summary.standard_blocks, summary.compact_blocks, summary.reused_blocks
+    );
+    if summary.discarded_headers != 0 {
+        println!(
+            "warning: discarded {} of {} OEM_INFO header candidates",
+            summary.discarded_headers, summary.candidate_headers
+        );
+    }
+    println!();
+    println!(
+        "{:<10} {:>6} {:>6} {:>7} {:>8} {:>10} {:<16} {:<8} TYPE",
+        "OFFSET", "ID", "SUB", "AGE", "LENGTH", "BANK/COPY", "LAYOUT", "HEADER"
+    );
+    for block in summary.blocks {
+        println!(
+            "0x{:08X} {:>6} {:>6} {:>7} {:>8} {:<10} {:<16} 0x{:03X} {}",
+            block.offset,
+            block.id,
+            block.sub_id,
+            block.age,
+            block.length,
+            format!(
+                "{}/{}",
+                block.region,
+                if block.active { "active" } else { "backup" }
+            ),
+            block.layout,
+            block.header_size,
+            block.payload_kind
+        );
+        if let (true, Some(text)) = (preview, block.text_preview) {
+            println!("  preview: {text}");
+        }
+        if let Some(version) = block.image_version_hex {
+            println!(
+                "  image: version=0x{} random_adjust={}",
+                version,
+                block.image_random_adjust.unwrap_or(0)
+            );
+        } else if let Some(description) = block.tlv_description {
+            println!("  tlv: {} parts ({description})", block.tlv_parts);
+        }
+    }
+    Ok(())
+}
+
 fn run_cpio_command(file: &Path, command: CpioCommands) -> Result<()> {
     let file_str = file
         .to_str()
@@ -411,6 +487,7 @@ fn main() {
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::PartitionInfo { image } => run_partition_info_command(image),
         Command::Entropy { file } => run_entropy_command(file),
+        Command::Oeminfo { image, preview } => run_oeminfo_command(image, preview),
         Command::Fastboot { command } => run_fastboot_command(command),
         Command::Vcom { command } => run_vcom_command(command),
         Command::Ramdisk { command } => run_ramdisk_command(command),

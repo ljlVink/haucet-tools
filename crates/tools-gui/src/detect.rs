@@ -22,6 +22,7 @@ pub enum FileKind {
     SecImage,
     HvbWrapped,
     Nve,
+    OemInfo,
     Cpio,
     ErofsWorkspace,
     RamdiskWorkspace,
@@ -39,6 +40,7 @@ impl FileKind {
             Self::SecImage => "Huawei 安全镜像",
             Self::HvbWrapped => "HVB 分区镜像",
             Self::Nve => "Hisi-NV-Partition",
+            Self::OemInfo => "Huawei OEMINFO 镜像",
             Self::Cpio => "cpio 归档",
             Self::ErofsWorkspace => "EROFS 工作区",
             Self::RamdiskWorkspace => "Ramdisk 工作区",
@@ -214,6 +216,15 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         return (
             FileKind::HvbWrapped,
             "HVB 尾部包装的分区镜像, 可查看分区信息".to_owned(),
+        );
+    }
+
+    // OEMINFO has no fixed image-level header, so only probe for embedded block headers
+    // after formats with stronger signatures have been ruled out.
+    if common::oeminfo::probe_file(path).unwrap_or(false) {
+        return (
+            FileKind::OemInfo,
+            "Huawei OEMINFO 镜像, 可浏览数据块与 A/B 副本".to_owned(),
         );
     }
 

@@ -215,6 +215,7 @@ enum ActionKind {
     RamdiskWorkspace,
     PartitionInput,
     NvmeInput,
+    OemInfoInput,
 }
 
 fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
@@ -237,6 +238,7 @@ fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
             vec![("查看分区信息", Page::Images, ActionKind::PartitionInput)]
         }
         FileKind::Nve => vec![("打开 NVE 编辑器", Page::Nvme, ActionKind::NvmeInput)],
+        FileKind::OemInfo => vec![("浏览 OEMINFO", Page::OemInfo, ActionKind::OemInfoInput)],
         FileKind::Cpio => vec![("浏览 cpio 归档", Page::Cpio, ActionKind::Input)],
         FileKind::ErofsWorkspace => {
             vec![("重新打包镜像", Page::Images, ActionKind::ErofsWorkspace)]
@@ -279,6 +281,9 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
         }
         (Page::Nvme, ActionKind::NvmeInput) => {
             app.nvme.select_input(path.to_owned());
+        }
+        (Page::OemInfo, ActionKind::OemInfoInput) => {
+            app.oeminfo.select_input(path.to_owned());
         }
         (Page::Cpio, _) => {
             app.cpio.select_input(path.to_owned());

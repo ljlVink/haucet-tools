@@ -14,6 +14,7 @@ pub(crate) struct HaucetApp {
     pub vcom: pages::vcom::VcomPage,
     pub cpio: pages::cpio::CpioPage,
     pub nvme: pages::nvme::NvmePage,
+    pub oeminfo: pages::oeminfo::OemInfoPage,
 
     pub job: Option<RunningJob>,
     job_owner: ResultOwner,
@@ -79,6 +80,7 @@ impl HaucetApp {
             vcom: pages::vcom::VcomPage::default(),
             cpio: pages::cpio::CpioPage::default(),
             nvme: pages::nvme::NvmePage::default(),
+            oeminfo: pages::oeminfo::OemInfoPage::default(),
             job: None,
             job_owner: ResultOwner::Page(Page::Home),
             logs: Vec::new(),
@@ -288,7 +290,13 @@ impl HaucetApp {
         }
 
         nav_group_label(ui, "文件与镜像");
-        for page in [Page::Package, Page::Images, Page::Cpio, Page::Nvme] {
+        for page in [
+            Page::Package,
+            Page::Images,
+            Page::Cpio,
+            Page::OemInfo,
+            Page::Nvme,
+        ] {
             if nav_button(ui, self.current, page) {
                 self.nav(page);
             }
@@ -402,6 +410,11 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.nvme = page;
                 }
+                Page::OemInfo => {
+                    let mut page = std::mem::take(&mut self.oeminfo);
+                    page.ui(ui, self);
+                    self.oeminfo = page;
+                }
             }
         });
     }
@@ -447,6 +460,8 @@ fn job_label(op: &JobOp) -> &'static str {
     match op {
         NvmeInspect { .. } => "Read NVMe / NVE",
         NvmeEdit { .. } => "Edit NVMe / NVE",
+        OemInfoInspect { .. } => "读取 OEMINFO",
+        OemInfoExportImage { .. } => "导出 OEMINFO 图片",
         PackageInspect { .. } => "读取更新包内容",
         PackageUnpack { .. } => "解包更新包",
         ErofsUnpack { .. } => "解包 EROFS 镜像",

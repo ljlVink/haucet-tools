@@ -1476,6 +1476,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_extras",
+ "flate2",
  "hisi-vcom",
  "hm-fastboot",
  "image",

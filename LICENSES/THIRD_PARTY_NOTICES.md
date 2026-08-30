@@ -38,3 +38,7 @@ release-compliance item rather than a resolved attribution issue.
   [Potato.ImageFlasher](https://github.com/kitsuned/Potato.ImageFlasher), and
   NVE behavior references [hisi-nve](https://github.com/R0rt1z2/hisi-nve).
   Both are GPL-3.0 projects.
+- OEMINFO block parsing and payload-classification behavior references
+  [ud3v0id/huawei-oeminfo-tool](https://github.com/ud3v0id/huawei-oeminfo-tool),
+  Copyright (c) 2025 ud3v0id and licensed under MIT. See
+  `LICENSES/MIT-huawei-oeminfo-tool.txt`.
