@@ -137,26 +137,9 @@ impl NvmePage {
 
         ui.label(egui::RichText::new("镜像概览").strong().size(16.0));
         ui.add_space(5.0);
-        if ui.available_width() >= 760.0 {
-            ui.columns(3, |columns| {
-                summary_stat(&mut columns[0], "活动块", &blocks, "活动 / 总数", None);
-                summary_stat(&mut columns[1], "有效条目", &entries, &version, None);
-                summary_stat(
-                    &mut columns[2],
-                    "CRC32C",
-                    &crc_value,
-                    &crc_detail,
-                    crc_color,
-                );
-            });
-        } else {
-            ui.columns(2, |columns| {
-                summary_stat(&mut columns[0], "活动块", &blocks, "活动 / 总数", None);
-                summary_stat(&mut columns[1], "有效条目", &entries, &version, None);
-            });
-            ui.add_space(6.0);
-            summary_stat(ui, "CRC32C", &crc_value, &crc_detail, crc_color);
-        }
+        summary_row(ui, "活动块", &blocks, "活动 / 总数", None);
+        summary_row(ui, "有效条目", &entries, &version, None);
+        summary_row(ui, "CRC32C", &crc_value, &crc_detail, crc_color);
         if summary.crc_invalid != 0 {
             ui.add_space(8.0);
             message_box(
@@ -605,26 +588,23 @@ impl NvmePage {
     }
 }
 
-fn summary_stat(
+fn summary_row(
     ui: &mut egui::Ui,
     label: &str,
     value: &str,
     detail: &str,
     color: Option<egui::Color32>,
 ) {
-    let fill = ui.visuals().faint_bg_color;
-    egui::Frame::group(ui.style())
-        .fill(fill)
-        .corner_radius(6)
-        .inner_margin(egui::Margin::same(10))
-        .show(ui, |ui| {
-            ui.set_min_height(66.0);
-            ui.label(egui::RichText::new(label).small().weak());
-            let mut value_text = egui::RichText::new(value).strong().size(19.0);
-            if let Some(color) = color {
-                value_text = value_text.color(color);
-            }
-            ui.add(egui::Label::new(value_text).truncate());
-            ui.label(egui::RichText::new(detail).small().weak());
-        });
+    ui.horizontal_wrapped(|ui| {
+        ui.add_sized(
+            [88.0, 22.0],
+            egui::Label::new(egui::RichText::new(format!("{label}：")).strong()),
+        );
+        let mut value_text = egui::RichText::new(value).strong();
+        if let Some(color) = color {
+            value_text = value_text.color(color);
+        }
+        ui.add_sized([110.0, 22.0], egui::Label::new(value_text));
+        ui.label(egui::RichText::new(detail).small().weak());
+    });
 }

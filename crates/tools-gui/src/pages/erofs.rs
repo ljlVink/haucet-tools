@@ -158,11 +158,6 @@ impl ErofsPage {
     }
 
     fn unpack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        ui.label(
-            egui::RichText::new("把 EROFS 分区镜像(system.img、vendor.img 等)解成可编辑的工作区")
-                .weak(),
-        );
-        ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("镜像文件").strong());
             let response = ui.add(

@@ -6,8 +6,6 @@ use crate::worker::JobOp;
 use eframe::egui;
 use std::path::PathBuf;
 
-const PROJECT_LICENSE_SPDX: &str = "GPL-3.0-only";
-
 pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
@@ -33,35 +31,14 @@ enum ResultOwner {
     Image(ImageKind),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum JobStatus {
-    Cancelled,
-    Succeeded,
-    Failed,
-}
-
-impl From<&JobResult> for JobStatus {
-    fn from(result: &JobResult) -> Self {
-        if result.cancelled {
-            Self::Cancelled
-        } else if result.ok {
-            Self::Succeeded
-        } else {
-            Self::Failed
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 struct ResultStore {
     pending: Vec<(ResultOwner, JobResult)>,
-    latest: Option<JobStatus>,
 }
 
 impl ResultStore {
     fn insert(&mut self, owner: ResultOwner, result: JobResult) {
         self.remove(owner);
-        self.latest = Some(JobStatus::from(&result));
         self.pending.push((owner, result));
     }
 
@@ -75,10 +52,6 @@ impl ResultStore {
             .iter()
             .position(|(stored, _)| *stored == owner)?;
         Some(self.pending.remove(index).1)
-    }
-
-    fn latest(&self) -> Option<JobStatus> {
-        self.latest
     }
 }
 
@@ -306,18 +279,7 @@ impl HaucetApp {
     }
 
     fn window_title(&self) -> String {
-        let status = if let Some(job) = &self.job {
-            format!("运行中 {}s", job.elapsed().as_secs())
-        } else if let Some(status) = self.results.latest() {
-            match status {
-                JobStatus::Cancelled => "上次任务已取消".to_owned(),
-                JobStatus::Succeeded => "上次任务成功".to_owned(),
-                JobStatus::Failed => "上次任务失败".to_owned(),
-            }
-        } else {
-            "空闲".to_owned()
-        };
-        format!("Haucet Tools - {status}")
+        format_window_title(self.job.as_ref().map(RunningJob::elapsed))
     }
 
     fn nav_panel(&mut self, ui: &mut egui::Ui) {
@@ -345,9 +307,9 @@ impl HaucetApp {
         ui.horizontal(|ui| {
             ui.add_space(10.0);
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new("关于").weak());
+                ui.label(egui::RichText::new(common::version::ABOUT_HEADING).weak());
                 ui.label(
-                    egui::RichText::new("Huawei/HarmonyOS 镜像工具")
+                    egui::RichText::new(common::version::ABOUT)
                         .weak()
                         .size(11.0),
                 );
@@ -356,12 +318,16 @@ impl HaucetApp {
                         .weak()
                         .size(11.0),
                 );
-                ui.label(egui::RichText::new(PROJECT_LICENSE_SPDX).weak().size(11.0));
-                ui.hyperlink_to(
-                    egui::RichText::new("GitHub: github.com/ljlVink/haucet-tools")
+                ui.label(
+                    egui::RichText::new(common::version::LICENSE_SPDX)
                         .weak()
                         .size(11.0),
-                    "https://github.com/ljlVink/haucet-tools",
+                );
+                ui.hyperlink_to(
+                    egui::RichText::new(common::version::REPOSITORY_LABEL)
+                        .weak()
+                        .size(11.0),
+                    common::version::REPOSITORY_URL,
                 );
             });
         });
@@ -439,6 +405,13 @@ impl HaucetApp {
                 }
             }
         });
+    }
+}
+
+fn format_window_title(elapsed: Option<std::time::Duration>) -> String {
+    match elapsed {
+        Some(elapsed) => format!("Haucet Tools - 运行中 {}s", elapsed.as_secs()),
+        None => "Haucet Tools - 空闲".to_owned(),
     }
 }
 

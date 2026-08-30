@@ -66,6 +66,6 @@ the project license.
 Copyright (C) 2026 ljlVink.
 
 Bundled tools, fonts, adapted upstream code, and Rust dependencies retain
-their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+their own licenses. See [THIRD_PARTY_NOTICES.md](LICENSES/THIRD_PARTY_NOTICES.md) and
 the accompanying texts in [LICENSES/](LICENSES/). The root project license
 does not relicense those third-party components.
