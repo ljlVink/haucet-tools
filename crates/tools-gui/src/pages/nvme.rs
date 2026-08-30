@@ -44,19 +44,6 @@ impl NvmePage {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("NVMe / NVE 编辑器").strong().size(22.0));
-                        ui.label(egui::RichText::new("查看与修改 HiSilicon NVE 条目").weak());
-                    });
-                    if app.job_running() {
-                        ui.add_space(8.0);
-                        ui.add(egui::Spinner::new().size(16.0));
-                    }
-                });
-                ui.add_space(12.0);
-
                 self.image_row(ui, app);
                 if let Some(path) = app.take_drops(ui.ctx()).first().cloned() {
                     self.set_image(path.display().to_string());

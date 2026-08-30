@@ -58,13 +58,6 @@ impl PackagePage {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("更新包解包").strong().size(22.0));
-                ui.label(
-                    egui::RichText::new("读取更新包内容，选择需要的分区并解包到工作目录。").weak(),
-                );
-                ui.add_space(14.0);
-
                 let input_response = path_row(
                     ui,
                     app,

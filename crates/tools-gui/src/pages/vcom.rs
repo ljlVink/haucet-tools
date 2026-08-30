@@ -51,9 +51,6 @@ impl VcomPage {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.add_space(6.0);
-                ui.label(egui::RichText::new("HiSilicon VCOM 刷机").weak());
-                ui.add_space(8.0);
                 self.status_section(ui, app);
                 ui.add_space(12.0);
                 self.flash_section(ui, app);

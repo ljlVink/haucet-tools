@@ -23,16 +23,6 @@ impl ImagesPage {
             .id_salt("images-scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("镜像工作区").strong().size(22.0));
-                ui.label(
-                    egui::RichText::new(
-                        "在同一处识别镜像，并完成分区镜像与启动镜像的解包、修改和重建。",
-                    )
-                    .weak(),
-                );
-                ui.add_space(14.0);
-
                 ui.columns(3, |columns| {
                     if kind_card(
                         &mut columns[0],

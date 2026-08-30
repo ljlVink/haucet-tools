@@ -102,6 +102,7 @@ impl eframe::App for HaucetApp {
             .exact_width(200.0)
             .show(ctx, |ui| self.nav_panel(ui));
         egui::TopBottomPanel::bottom("log-panel").show(ctx, |ui| self.log_panel(ui));
+        self.page_header_panel(ctx);
         egui::CentralPanel::default().show(ctx, |ui| self.central(ui));
 
         if !self.font_loaded {
@@ -368,6 +369,26 @@ impl HaucetApp {
                     }
                 });
         }
+    }
+
+    fn page_header_panel(&self, ctx: &egui::Context) {
+        let Some((title, description)) = self.current.header() else {
+            return;
+        };
+        let busy = self.job.is_some()
+            && match self.job_owner {
+                ResultOwner::Page(owner) => owner == self.current,
+                ResultOwner::Image(_) => self.current == Page::Images,
+            };
+
+        egui::TopBottomPanel::top("page-header")
+            .resizable(false)
+            .exact_height(68.0)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                apply_content_text_style(ui);
+                pages::page_header(ui, title, description, busy);
+            });
     }
 
     fn central(&mut self, ui: &mut egui::Ui) {
