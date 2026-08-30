@@ -1,13 +1,14 @@
 use crate::formats::gpt::{self, GptInfo};
-use crate::formats::harmony::{HARMONY_MAGIC, HvbFrame};
+use crate::formats::harmony::{HARMONY_MAGIC, HarmonyHeader, HvbFrame};
 use crate::formats::hvb::{HvbCert, HvbFooter, HvbWrapper};
 use crate::formats::{rvt, secimg};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 
 const RVT_MAGIC: &[u8; 4] = b"rot\0";
+const HARMONY_HEADER_PROBE_SIZE: usize = 0x800;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CertSummary {
@@ -78,16 +79,11 @@ pub fn info(image: &Path) -> io::Result<()> {
 }
 
 pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
+    // if image starts with harmony magic (like system erofs image) may cause too much memory load, using a optimized algorithm to reduce mem.
     if starts_with_magic(image, HARMONY_MAGIC)? {
-        let frame = HvbFrame::load(image)?;
-        return Ok(PartitionSummary::Harmony(HarmonySummary {
-            hdr_size: frame.harmony.hdr_size,
-            image_size: frame.harmony.image_size,
-            flags: frame.harmony.flags,
-            buildvariant: frame.harmony.buildvariant.clone(),
-            footer: frame.footer.clone(),
-            cert: summarize_cert(&frame.cert),
-        }));
+        let mut file = File::open(image)?;
+        let length = file.metadata()?.len();
+        return summarize_harmony_reader(&mut file, length).map(PartitionSummary::Harmony);
     }
     if starts_with_magic(image, RVT_MAGIC)? {
         return Ok(PartitionSummary::Rvt(rvt::parse_image(image)?));
@@ -112,6 +108,49 @@ pub fn summarize(image: &Path) -> io::Result<PartitionSummary> {
         });
     }
     Err(invalid("not a HARMONY!/HVB/RVT/GPT/Huawei secure image"))
+}
+
+fn summarize_harmony_reader(
+    reader: &mut (impl Read + Seek),
+    length: u64,
+) -> io::Result<HarmonySummary> {
+    if length < HARMONY_MAGIC.len() as u64 {
+        return Err(invalid("file too small"));
+    }
+
+    reader.seek(SeekFrom::Start(0))?;
+    let header_len = usize::try_from(length)
+        .unwrap_or(usize::MAX)
+        .min(HARMONY_HEADER_PROBE_SIZE);
+    let mut header = vec![0_u8; header_len];
+    reader.read_exact(&mut header)?;
+    let harmony = HarmonyHeader::parse(&header)?;
+
+    let wrapper = HvbWrapper::read_from_reader(reader, length)
+        .map_err(|error| invalid(&error.to_string()))?
+        .ok_or_else(|| invalid("not an HVB wrapped image"))?;
+    let cert = HvbCert::parse(&wrapper.certificate)?;
+
+    let header_size = u64::from(harmony.hdr_size);
+    let payload_end = header_size
+        .checked_add(u64::from(harmony.image_size))
+        .ok_or_else(|| invalid("HARMONY payload range overflow"))?;
+    if header_size < 0x20
+        || header_size > wrapper.footer.image_size
+        || payload_end > wrapper.footer.image_size
+        || wrapper.footer.image_size > wrapper.footer.cert_offset
+    {
+        return Err(invalid("HVB image range is invalid"));
+    }
+
+    Ok(HarmonySummary {
+        hdr_size: harmony.hdr_size,
+        image_size: harmony.image_size,
+        flags: harmony.flags,
+        buildvariant: harmony.buildvariant,
+        footer: wrapper.footer,
+        cert: summarize_cert(&cert),
+    })
 }
 
 fn starts_with_magic(path: &Path, magic: &[u8]) -> io::Result<bool> {

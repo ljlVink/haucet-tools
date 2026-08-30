@@ -117,12 +117,20 @@ impl HvbWrapper {
         let mut file =
             File::open(path).with_context(|| format!("opening image {}", path.display()))?;
         let length = file.metadata()?.len();
+        Self::read_from_reader(&mut file, length)
+            .with_context(|| format!("reading HVB metadata from {}", path.display()))
+    }
+
+    pub(crate) fn read_from_reader(
+        reader: &mut (impl Read + Seek),
+        length: u64,
+    ) -> Result<Option<Self>> {
         if length < FOOTER_SIZE as u64 {
             return Ok(None);
         }
-        file.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))?;
+        reader.seek(SeekFrom::Start(length - FOOTER_SIZE as u64))?;
         let mut bytes = [0_u8; FOOTER_SIZE];
-        file.read_exact(&mut bytes)?;
+        reader.read_exact(&mut bytes)?;
         let footer = match HvbFooter::parse(&bytes) {
             Ok(footer) => footer,
             Err(_) => return Ok(None),
@@ -135,11 +143,11 @@ impl HvbWrapper {
             || cert_end > length - FOOTER_SIZE as u64
             || footer.cert_size > MAX_CERT_SIZE
         {
-            bail!("invalid HVB footer ranges in {}", path.display());
+            bail!("invalid HVB footer ranges");
         }
-        file.seek(SeekFrom::Start(footer.cert_offset))?;
+        reader.seek(SeekFrom::Start(footer.cert_offset))?;
         let mut certificate = vec![0_u8; footer.cert_size as usize];
-        file.read_exact(&mut certificate)?;
+        reader.read_exact(&mut certificate)?;
         Ok(Some(Self {
             footer,
             certificate,
