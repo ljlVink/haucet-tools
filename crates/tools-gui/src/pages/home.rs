@@ -42,11 +42,7 @@ impl HomePage {
                 egui::vec2(ui.available_width(), 72.0),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
-                    ui.label(
-                        egui::RichText::new("欢迎使用 Haucet Tools")
-                            .strong()
-                            .size(22.0),
-                    );
+                    ui.label(egui::RichText::new(tr!("home-welcome")).strong().size(22.0));
                 },
             );
         });
@@ -99,9 +95,9 @@ impl HomePage {
             rect.center(),
             egui::Align2::CENTER_CENTER,
             if hovered {
-                "松开以识别文件"
+                tr!("home-drop-release")
             } else {
-                "把文件或文件夹拖到这里"
+                tr!("home-drop-prompt")
             },
             egui::FontId::proportional(18.0),
             if hovered {
@@ -118,7 +114,11 @@ impl HomePage {
         app: &mut HaucetApp,
         detection: &detect::Detection,
     ) {
-        ui.label(egui::RichText::new("文件识别结果").strong().size(15.0));
+        ui.label(
+            egui::RichText::new(tr!("home-detection-result"))
+                .strong()
+                .size(15.0),
+        );
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {
@@ -143,7 +143,11 @@ impl HomePage {
     }
 
     fn quick_actions(&self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        ui.label(egui::RichText::new("常用任务").strong().size(15.0));
+        ui.label(
+            egui::RichText::new(tr!("home-common-tasks"))
+                .strong()
+                .size(15.0),
+        );
         ui.add_space(4.0);
         let spacing = 12.0;
         let available_width = ui.available_width();
@@ -158,25 +162,49 @@ impl HomePage {
             .num_columns(columns)
             .spacing([spacing, spacing])
             .show(ui, |ui| {
-                quick_card(ui, "解包 update.zip 更新包", Page::Package, card_width, app);
+                quick_card(
+                    ui,
+                    &tr!("home-task-unpack-package"),
+                    Page::Package,
+                    card_width,
+                    app,
+                );
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "镜像工作区", Page::Images, card_width, app);
+                quick_card(ui, &tr!("page-images-title"), Page::Images, card_width, app);
                 ui.end_row();
-                if quick_card(ui, "识别镜像与分区信息", Page::Images, card_width, app) {
+                if quick_card(
+                    ui,
+                    &tr!("home-task-identify-image"),
+                    Page::Images,
+                    card_width,
+                    app,
+                ) {
                     app.images.kind = crate::pages::images::ImageKind::Partition;
                 }
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "浏览 Cpio 归档", Page::Cpio, card_width, app);
+                quick_card(
+                    ui,
+                    &tr!("home-task-browse-cpio"),
+                    Page::Cpio,
+                    card_width,
+                    app,
+                );
                 ui.end_row();
-                quick_card(ui, "Fastboot 刷机", Page::Fastboot, card_width, app);
+                quick_card(
+                    ui,
+                    &tr!("page-fastboot-title"),
+                    Page::Fastboot,
+                    card_width,
+                    app,
+                );
                 if columns == 1 {
                     ui.end_row();
                 }
-                quick_card(ui, "VCOM 刷机", Page::Vcom, card_width, app);
+                quick_card(ui, &tr!("page-vcom-title"), Page::Vcom, card_width, app);
                 ui.end_row();
             });
     }
@@ -186,7 +214,7 @@ impl HomePage {
             return;
         }
         ui.add_space(6.0);
-        ui.label(egui::RichText::new("最近打开").strong().size(15.0));
+        ui.label(egui::RichText::new(tr!("home-recent")).strong().size(15.0));
         let recents = app.settings.recent.clone();
         for recent in recents {
             let path = std::path::PathBuf::from(&recent);
@@ -218,35 +246,87 @@ enum ActionKind {
     OemInfoInput,
 }
 
-fn suggested_actions(kind: FileKind) -> Vec<(&'static str, Page, ActionKind)> {
+fn suggested_actions(kind: FileKind) -> Vec<(String, Page, ActionKind)> {
     match kind {
-        FileKind::ZipPackage => vec![("解包更新包", Page::Package, ActionKind::Input)],
+        FileKind::ZipPackage => vec![(
+            tr!("action-unpack-package"),
+            Page::Package,
+            ActionKind::Input,
+        )],
         FileKind::Erofs => vec![
-            ("解包 EROFS", Page::Images, ActionKind::ErofsInput),
-            ("查看分区信息", Page::Images, ActionKind::PartitionInput),
+            (
+                tr!("action-unpack-erofs"),
+                Page::Images,
+                ActionKind::ErofsInput,
+            ),
+            (
+                tr!("action-view-partition"),
+                Page::Images,
+                ActionKind::PartitionInput,
+            ),
         ],
         FileKind::HarmonyFrame => vec![
-            ("Ramdisk 操作", Page::Images, ActionKind::RamdiskInput),
-            ("查看分区信息", Page::Images, ActionKind::PartitionInput),
+            (
+                tr!("action-ramdisk"),
+                Page::Images,
+                ActionKind::RamdiskInput,
+            ),
+            (
+                tr!("action-view-partition"),
+                Page::Images,
+                ActionKind::PartitionInput,
+            ),
         ],
-        FileKind::Rvt => vec![("查看 RVT 信息", Page::Images, ActionKind::PartitionInput)],
-        FileKind::Gpt => vec![("查看 GPT 分区表", Page::Images, ActionKind::PartitionInput)],
+        FileKind::Rvt => vec![(
+            tr!("action-view-rvt"),
+            Page::Images,
+            ActionKind::PartitionInput,
+        )],
+        FileKind::Gpt => vec![(
+            tr!("action-view-gpt"),
+            Page::Images,
+            ActionKind::PartitionInput,
+        )],
         FileKind::SecImage => {
-            vec![("查看安全镜像信息", Page::Images, ActionKind::PartitionInput)]
+            vec![(
+                tr!("action-view-sec-image"),
+                Page::Images,
+                ActionKind::PartitionInput,
+            )]
         }
         FileKind::HvbWrapped => {
-            vec![("查看分区信息", Page::Images, ActionKind::PartitionInput)]
+            vec![(
+                tr!("action-view-partition"),
+                Page::Images,
+                ActionKind::PartitionInput,
+            )]
         }
-        FileKind::Nve => vec![("打开 NVE 编辑器", Page::Nvme, ActionKind::NvmeInput)],
-        FileKind::OemInfo => vec![("浏览 OEMINFO", Page::OemInfo, ActionKind::OemInfoInput)],
-        FileKind::Cpio => vec![("浏览 cpio 归档", Page::Cpio, ActionKind::Input)],
+        FileKind::Nve => vec![(tr!("action-open-nve"), Page::Nvme, ActionKind::NvmeInput)],
+        FileKind::OemInfo => vec![(
+            tr!("action-browse-oeminfo"),
+            Page::OemInfo,
+            ActionKind::OemInfoInput,
+        )],
+        FileKind::Cpio => vec![(tr!("action-browse-cpio"), Page::Cpio, ActionKind::Input)],
         FileKind::ErofsWorkspace => {
-            vec![("重新打包镜像", Page::Images, ActionKind::ErofsWorkspace)]
+            vec![(
+                tr!("action-repack-image"),
+                Page::Images,
+                ActionKind::ErofsWorkspace,
+            )]
         }
         FileKind::RamdiskWorkspace => {
-            vec![("重新打包镜像", Page::Images, ActionKind::RamdiskWorkspace)]
+            vec![(
+                tr!("action-repack-image"),
+                Page::Images,
+                ActionKind::RamdiskWorkspace,
+            )]
         }
-        FileKind::Unknown => vec![("尝试查看分区信息", Page::Images, ActionKind::PartitionInput)],
+        FileKind::Unknown => vec![(
+            tr!("action-try-partition"),
+            Page::Images,
+            ActionKind::PartitionInput,
+        )],
     }
 }
 

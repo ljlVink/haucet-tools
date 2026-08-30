@@ -65,7 +65,7 @@ impl FastbootPage {
     }
 
     fn status_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "Fastboot 设备");
+        section(ui, &tr!("fastboot-devices"));
         let reboot_ready = !app.job_running()
             && self
                 .status
@@ -74,9 +74,9 @@ impl FastbootPage {
         ui.horizontal(|ui| {
             if run_button(
                 ui,
-                "检测设备连接",
+                &tr!("detect-device"),
                 !app.job_running(),
-                Some("重新枚举 USB 设备并查询 fastboot 变量"),
+                Some(&tr!("fastboot-detect-hint")),
             )
             .clicked()
             {
@@ -84,9 +84,9 @@ impl FastbootPage {
             }
             if run_button(
                 ui,
-                "重启设备",
+                &tr!("reboot-device"),
                 reboot_ready,
-                Some("向已连接的 fastboot 设备发送 reboot 命令"),
+                Some(&tr!("fastboot-reboot-hint")),
             )
             .clicked()
             {
@@ -95,9 +95,9 @@ impl FastbootPage {
             if app.job_running() {
                 ui.add(egui::Spinner::new().size(16.0));
                 let text = match self.pending {
-                    Some(PendingOp::Status) => "正在检测",
-                    Some(PendingOp::Reboot) => "正在重启",
-                    Some(PendingOp::Flash) | None => "任务运行中",
+                    Some(PendingOp::Status) => tr!("detecting"),
+                    Some(PendingOp::Reboot) => tr!("rebooting"),
+                    Some(PendingOp::Flash) | None => tr!("task-running"),
                 };
                 ui.label(egui::RichText::new(text).weak());
             }
@@ -119,15 +119,15 @@ impl FastbootPage {
             return;
         }
         let Some(status) = &self.status else {
-            ui.label(egui::RichText::new("尚未检测, 点击上方按钮开始。").weak());
+            ui.label(egui::RichText::new(tr!("fastboot-not-checked")).weak());
             return;
         };
         if !status.connected {
             let message = match status.devices.len() {
-                0 => "未检测到 fastboot 设备",
-                1 => "检测到 fastboot 设备，但无法打开。请检查管理员权限或 WinUSB 驱动后重新检测。",
+                0 => tr!("fastboot-not-found"),
+                1 => tr!("fastboot-cannot-open"),
                 _ => {
-                    "检测到多个 fastboot 设备，为避免选错目标，刷写和重启已禁用。请只保留目标设备后重新检测。"
+                    tr!("fastboot-multiple")
                 }
             };
             message_box(ui, egui::Color32::from_rgb(230, 170, 40), message);
@@ -135,7 +135,7 @@ impl FastbootPage {
         }
 
         ui.horizontal(|ui| {
-            crate::pages::badge_text(ui, "已连接", egui::Color32::from_rgb(90, 200, 120));
+            crate::pages::badge_text(ui, &tr!("connected"), egui::Color32::from_rgb(90, 200, 120));
             if let Some(device) = status.devices.first() {
                 ui.label(
                     egui::RichText::new(format!(
@@ -154,9 +154,13 @@ impl FastbootPage {
                         .num_columns(2)
                         .spacing([18.0, 6.0])
                         .show(ui, |ui| {
-                            kv(ui, "产品", &device.product);
-                            kv(ui, "序列号", &device.serial);
-                            kv(ui, "USB 地址", format!("{}:{}", device.bus, device.addr));
+                            kv(ui, &tr!("product"), &device.product);
+                            kv(ui, &tr!("serial-number"), &device.serial);
+                            kv(
+                                ui,
+                                &tr!("usb-address"),
+                                format!("{}:{}", device.bus, device.addr),
+                            );
                             kv(ui, "VID:PID", format!("{}:{}", device.vid, device.pid));
                         });
                     ui.add_space(4.0);
@@ -164,7 +168,7 @@ impl FastbootPage {
                     ui.add_space(4.0);
                 }
                 if status.vars.is_empty() {
-                    ui.label(egui::RichText::new("设备未返回 fastboot 变量。").weak());
+                    ui.label(egui::RichText::new(tr!("fastboot-no-vars")).weak());
                 } else {
                     egui::Grid::new("fastboot-vars-grid")
                         .num_columns(2)
@@ -179,12 +183,12 @@ impl FastbootPage {
     }
 
     fn flash_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "刷写镜像");
+        section(ui, &tr!("flash-image"));
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("镜像文件").strong());
+            ui.label(egui::RichText::new(tr!("image-file")).strong());
             let image_response = ui.add(
                 egui::TextEdit::singleline(&mut self.image)
-                    .hint_text("镜像文件路径或拖放文件到这里")
+                    .hint_text(tr!("image-path-drop-hint"))
                     .desired_width(ui.available_width() - 170.0),
             );
             if image_response.changed()
@@ -192,8 +196,11 @@ impl FastbootPage {
             {
                 self.target = target;
             }
-            if ui.button("选择镜像").clicked()
-                && let Some(path) = app.pick_file("选择镜像文件", &[("镜像文件", &["img", "bin"])])
+            if ui.button(tr!("choose-image")).clicked()
+                && let Some(path) = app.pick_file(
+                    &tr!("choose-image-file"),
+                    &[(tr!("filter-image-file").as_str(), &["img", "bin"])],
+                )
             {
                 self.set_image(&path);
             }
@@ -204,16 +211,16 @@ impl FastbootPage {
         }
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("目标分区").strong());
+            ui.label(egui::RichText::new(tr!("target-partition")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.target)
-                    .hint_text("分区名, 例如 updater / ramdisk / vendor")
+                    .hint_text(tr!("target-partition-hint"))
                     .desired_width(ui.available_width() - 170.0),
             );
         });
 
         ui.label(
-            egui::RichText::new("⚠ 刷写会覆盖设备上的分区数据, 请确认分区名和镜像正确。")
+            egui::RichText::new(tr!("flash-data-warning"))
                 .color(egui::Color32::from_rgb(230, 170, 40)),
         );
         ui.add_space(6.0);
@@ -226,9 +233,9 @@ impl FastbootPage {
             && !self.target.trim().is_empty();
         if run_button(
             ui,
-            "刷写镜像",
+            &tr!("flash-image"),
             ready,
-            Some("把镜像刷写到目标分区 (支持 raw 和 Android sparse 格式)"),
+            Some(&tr!("flash-image-hint")),
         )
         .clicked()
         {
@@ -240,7 +247,7 @@ impl FastbootPage {
             });
         }
         if app.job_running() {
-            ui.label(egui::RichText::new("任务运行中").weak());
+            ui.label(egui::RichText::new(tr!("task-running")).weak());
         }
 
         ui.add_space(10.0);
@@ -272,7 +279,8 @@ impl FastbootPage {
                         }
                         Err(error) => {
                             self.status = None;
-                            self.status_error = Some(format!("解析检测结果失败: {error}"));
+                            self.status_error =
+                                Some(tr!("status-parse-error", "error" => error.to_string()));
                         }
                     }
                 }

@@ -4,11 +4,14 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::i18n::Language;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub last_dir: Option<String>,
     pub recent: Vec<String>,
+    pub language: Language,
 }
 
 impl Settings {

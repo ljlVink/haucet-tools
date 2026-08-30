@@ -55,36 +55,38 @@ impl Drop for RunningJob {
 pub fn start(op: JobOp) -> Result<RunningJob> {
     let spec = JobSpec { op: op.clone() };
     let json = serde_json::to_string(&spec)?;
-    let mut command = Command::new(std::env::current_exe().context("定位当前可执行文件")?);
+    let mut command =
+        Command::new(std::env::current_exe().context(tr!("locate-executable-error"))?);
     hide_command_window(&mut command);
     command
         .env(worker::WORKER_ENV, "1")
+        .env(crate::i18n::LANGUAGE_ENV, crate::i18n::language().tag())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut worker = ProcessTreeChild::spawn(&mut command).context("启动后台工作进程")?;
+    let mut worker = ProcessTreeChild::spawn(&mut command).context(tr!("start-worker-error"))?;
 
     let pipes = (|| -> Result<_> {
         let mut stdin = worker
             .child
             .stdin
             .take()
-            .context("无法获取工作进程的标准输入")?;
+            .context(tr!("worker-stdin-error"))?;
         stdin
             .write_all(json.as_bytes())
-            .context("向工作进程发送任务")?;
+            .context(tr!("worker-send-error"))?;
         drop(stdin);
 
         let stdout = worker
             .child
             .stdout
             .take()
-            .context("无法获取工作进程的标准输出")?;
+            .context(tr!("worker-stdout-error"))?;
         let stderr = worker
             .child
             .stderr
             .take()
-            .context("无法获取工作进程的错误输出")?;
+            .context(tr!("worker-stderr-error"))?;
         Ok((stdout, stderr))
     })();
     let (stdout, stderr) = match pipes {
@@ -123,7 +125,7 @@ pub fn start(op: JobOp) -> Result<RunningJob> {
                         .unwrap_or_else(|_| JobResult {
                             ok: false,
                             cancelled: false,
-                            summary: "工作进程返回了无法解析的结果".to_owned(),
+                            summary: tr!("worker-result-invalid"),
                             payload: None,
                         });
                     let _ = tx.send(JobEvent::Done(result));
@@ -139,9 +141,9 @@ pub fn start(op: JobOp) -> Result<RunningJob> {
                 ok: false,
                 cancelled,
                 summary: if cancelled {
-                    "任务已取消(可能残留部分临时文件)".to_owned()
+                    tr!("worker-cancelled-partial")
                 } else {
-                    "工作进程异常退出, 未返回结果".to_owned()
+                    tr!("worker-exited-no-result")
                 },
                 payload: None,
             }));

@@ -38,21 +38,21 @@ impl PartitionPage {
 
         ui.set_width(ui.available_width());
         ui.add_space(6.0);
-        ui.label(egui::RichText::new("查看镜像封装、分区信息和 Shannon 熵").weak());
+        ui.label(egui::RichText::new(tr!("partition-help")).weak());
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("镜像文件").strong());
+            ui.label(egui::RichText::new(tr!("image-file")).strong());
             let input_response = ui.add(
                 egui::TextEdit::singleline(&mut self.input)
-                    .hint_text("镜像路径或拖放文件到这里")
+                    .hint_text(tr!("image-path-drop-hint"))
                     .desired_width(ui.available_width() - 160.0),
             );
             if input_response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter))
             {
                 self.select_input(self.input.clone());
             }
-            if ui.button("选择文件").clicked()
-                && let Some(path) = app.pick_file("选择镜像或文件", &[])
+            if ui.button(tr!("choose-file")).clicked()
+                && let Some(path) = app.pick_file(&tr!("choose-image-or-file"), &[])
             {
                 self.select_input(path.display().to_string());
             }
@@ -147,7 +147,8 @@ impl PartitionPage {
                 Err(error) => {
                     self.summary = None;
                     self.entropy_summary = None;
-                    self.partition_error = Some(format!("解析结果失败: {error}"));
+                    self.partition_error =
+                        Some(tr!("result-parse-error", "error" => error.to_string()));
                 }
             }
         }
@@ -158,21 +159,33 @@ impl PartitionPage {
             PartitionSummary::Harmony(harmony) => {
                 badge_heading(
                     ui,
-                    "HARMONY! 分区镜像",
+                    &tr!("harmony-partition-image"),
                     egui::Color32::from_rgb(90, 170, 255),
                 );
                 self.render_harmony(ui, harmony);
             }
             PartitionSummary::Rvt(rvt) => {
-                badge_heading(ui, "RVT 密钥镜像", egui::Color32::from_rgb(180, 130, 255));
+                badge_heading(
+                    ui,
+                    &tr!("format-rvt-image"),
+                    egui::Color32::from_rgb(180, 130, 255),
+                );
                 self.render_rvt(ui, rvt);
             }
             PartitionSummary::Gpt(gpt) => {
-                badge_heading(ui, "GPT 分区表", egui::Color32::from_rgb(100, 200, 140));
+                badge_heading(
+                    ui,
+                    &tr!("gpt-partition-table"),
+                    egui::Color32::from_rgb(100, 200, 140),
+                );
                 self.render_gpt(ui, gpt);
             }
             PartitionSummary::SecImage(secimg) => {
-                badge_heading(ui, "Huawei 安全镜像", egui::Color32::from_rgb(230, 170, 40));
+                badge_heading(
+                    ui,
+                    &tr!("format-sec-image"),
+                    egui::Color32::from_rgb(230, 170, 40),
+                );
                 self.render_secimg(ui, secimg);
             }
             PartitionSummary::HvbWrapped {
@@ -182,31 +195,40 @@ impl PartitionPage {
             } => {
                 badge_heading(
                     ui,
-                    "HVB 包装的分区镜像",
+                    &tr!("hvb-wrapped-partition-image"),
                     egui::Color32::from_rgb(90, 170, 255),
                 );
-                section(ui, "HVB 尾部");
+                section(ui, &tr!("hvb-footer"));
                 egui::Grid::new("hvb-footer-grid")
                     .num_columns(2)
                     .spacing([18.0, 6.0])
                     .show(ui, |ui| {
-                        kv(ui, "证书偏移", crate::util::hex64(footer.cert_offset));
-                        kv(ui, "证书大小", human_size(footer.cert_size));
-                        kv(ui, "镜像大小", crate::util::hex64(footer.image_size));
-                        kv(ui, "分区大小", crate::util::hex64(footer.partition_size));
+                        kv(
+                            ui,
+                            &tr!("certificate-offset"),
+                            crate::util::hex64(footer.cert_offset),
+                        );
+                        kv(ui, &tr!("certificate-size"), human_size(footer.cert_size));
+                        kv(
+                            ui,
+                            &tr!("image-size"),
+                            crate::util::hex64(footer.image_size),
+                        );
+                        kv(
+                            ui,
+                            &tr!("partition-size"),
+                            crate::util::hex64(footer.partition_size),
+                        );
                     });
                 ui.add_space(6.0);
-                section(ui, "HVB 证书");
+                section(ui, &tr!("hvb-certificate"));
                 match cert {
                     Some(cert) => render_cert(ui, cert),
                     None => {
                         message_box(
                             ui,
                             egui::Color32::from_rgb(230, 170, 40),
-                            format!(
-                                "证书解析失败: {}",
-                                cert_error.as_deref().unwrap_or("未知错误")
-                            ),
+                            tr!("certificate-parse-error", "error" => cert_error.clone().unwrap_or_else(|| tr!("unknown-error"))),
                         );
                     }
                 }
@@ -215,75 +237,87 @@ impl PartitionPage {
     }
 
     fn render_harmony(&self, ui: &mut egui::Ui, harmony: &HarmonySummary) {
-        section(ui, "HARMONY! 头部");
+        section(ui, &tr!("harmony-header"));
         egui::Grid::new("harmony-hdr-grid")
             .num_columns(2)
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
-                kv(ui, "头大小", crate::util::hex64(harmony.hdr_size as u64));
                 kv(
                     ui,
-                    "镜像大小",
+                    &tr!("header-size"),
+                    crate::util::hex64(harmony.hdr_size as u64),
+                );
+                kv(
+                    ui,
+                    &tr!("image-size"),
                     crate::util::hex64(harmony.image_size as u64),
                 );
-                kv(ui, "标志", crate::util::hex64(harmony.flags as u64));
-                kv(ui, "构建变体", &harmony.buildvariant);
+                kv(ui, &tr!("flags"), crate::util::hex64(harmony.flags as u64));
+                kv(ui, &tr!("build-variant"), &harmony.buildvariant);
             });
         ui.add_space(6.0);
-        section(ui, "HVB 尾部");
+        section(ui, &tr!("hvb-footer"));
         egui::Grid::new("harmony-footer-grid")
             .num_columns(2)
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
                 kv(
                     ui,
-                    "证书偏移",
+                    &tr!("certificate-offset"),
                     crate::util::hex64(harmony.footer.cert_offset),
                 );
-                kv(ui, "证书大小", human_size(harmony.footer.cert_size));
                 kv(
                     ui,
-                    "镜像大小",
+                    &tr!("certificate-size"),
+                    human_size(harmony.footer.cert_size),
+                );
+                kv(
+                    ui,
+                    &tr!("image-size"),
                     crate::util::hex64(harmony.footer.image_size),
                 );
                 kv(
                     ui,
-                    "分区大小",
+                    &tr!("partition-size"),
                     crate::util::hex64(harmony.footer.partition_size),
                 );
             });
         ui.add_space(6.0);
-        section(ui, "HVB 证书");
+        section(ui, &tr!("hvb-certificate"));
         render_cert(ui, &harmony.cert);
     }
 
     fn render_secimg(&self, ui: &mut egui::Ui, secimg: &SecImageInfo) {
-        section(ui, "镜像布局");
+        section(ui, &tr!("image-layout"));
         egui::Grid::new("secimg-layout-grid")
             .num_columns(2)
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
-                kv(ui, "组件名", &secimg.image_name);
-                kv(ui, "目标分区", &secimg.partition_name);
-                kv(ui, "文件大小", human_size(secimg.file_size));
+                kv(ui, &tr!("component-name"), &secimg.image_name);
+                kv(ui, &tr!("target-partition"), &secimg.partition_name);
+                kv(ui, &tr!("file-size"), human_size(secimg.file_size));
                 kv(
                     ui,
-                    "证书链大小",
+                    &tr!("certificate-chain-size"),
                     crate::util::hex64(secimg.certificate_chain_size),
                 );
-                kv(ui, "载荷偏移", crate::util::hex64(secimg.payload_offset));
-                kv(ui, "载荷大小", human_size(secimg.payload_size));
-                if let Some(size) = secimg.secondary_size {
-                    kv(ui, "第二声明长度 (OID .69)", human_size(size));
-                }
-                kv(ui, "尾随数据", human_size(secimg.trailing_size));
                 kv(
                     ui,
-                    "载荷 SHA-256",
+                    &tr!("payload-offset"),
+                    crate::util::hex64(secimg.payload_offset),
+                );
+                kv(ui, &tr!("payload-size"), human_size(secimg.payload_size));
+                if let Some(size) = secimg.secondary_size {
+                    kv(ui, &tr!("secondary-declared-size"), human_size(size));
+                }
+                kv(ui, &tr!("trailing-data"), human_size(secimg.trailing_size));
+                kv(
+                    ui,
+                    &tr!("payload-sha256"),
                     if secimg.payload_hash_valid {
-                        "校验通过"
+                        tr!("verification-passed")
                     } else {
-                        "不匹配"
+                        tr!("mismatch")
                     },
                 );
             });
@@ -295,14 +329,16 @@ impl PartitionPage {
         );
         if !secimg.payload_hash_valid {
             ui.label(
-                egui::RichText::new(format!("实际值: {}", secimg.actual_payload_sha256))
-                    .monospace()
-                    .small()
-                    .color(egui::Color32::from_rgb(230, 90, 90)),
+                egui::RichText::new(
+                    tr!("actual-value", "value" => secimg.actual_payload_sha256.clone()),
+                )
+                .monospace()
+                .small()
+                .color(egui::Color32::from_rgb(230, 90, 90)),
             );
         }
 
-        section(ui, "X.509 证书链");
+        section(ui, &tr!("x509-certificate-chain"));
         for certificate in &secimg.certificates {
             ui.label(
                 egui::RichText::new(format!(
@@ -315,11 +351,11 @@ impl PartitionPage {
                 .monospace(),
             );
             ui.label(
-                egui::RichText::new(format!(
-                    "有效期 {} 至 {}  |  {}",
-                    certificate.not_before,
-                    certificate.not_after,
-                    certificate.signature_algorithm_oid
+                egui::RichText::new(tr!(
+                    "certificate-validity",
+                    "from" => certificate.not_before.clone(),
+                    "to" => certificate.not_after.clone(),
+                    "algorithm" => certificate.signature_algorithm_oid.clone(),
                 ))
                 .weak()
                 .small(),
@@ -340,38 +376,50 @@ impl PartitionPage {
                 kv(ui, "verity_num", rvt.verity_num.to_string());
                 kv(
                     ui,
-                    "每分区密钥数",
+                    &tr!("keys-per-partition"),
                     if rvt.raw_key_count == 0 {
-                        "0(旧版, 按 1 处理)".to_owned()
+                        tr!("legacy-zero-as-one")
                     } else {
                         rvt.raw_key_count.to_string()
                     },
                 );
-                kv(ui, "描述符数量", rvt.descriptors.len().to_string());
-                kv(ui, "RVT 内容大小", format!("{} 字节", rvt.total_size));
                 kv(
                     ui,
-                    "包装方式",
+                    &tr!("descriptor-count"),
+                    rvt.descriptors.len().to_string(),
+                );
+                kv(
+                    ui,
+                    &tr!("rvt-content-size"),
+                    tr!("byte-count", "count" => rvt.total_size),
+                );
+                kv(
+                    ui,
+                    &tr!("wrapper"),
                     if rvt.hvb_wrapped {
-                        "HVB 包装".to_owned()
+                        tr!("hvb-wrapped")
                     } else {
-                        "裸 RVT".to_owned()
+                        tr!("raw-rvt")
                     },
                 );
                 if let Some(footer) = &rvt.footer {
-                    kv(ui, "分区大小", crate::util::hex64(footer.partition_size));
+                    kv(
+                        ui,
+                        &tr!("partition-size"),
+                        crate::util::hex64(footer.partition_size),
+                    );
                 }
             });
         if let Some(cert) = &rvt.cert {
             ui.add_space(6.0);
-            section(ui, "HVB 证书");
+            section(ui, &tr!("hvb-certificate"));
             render_cert(ui, &cert_summary(cert));
         }
         if rvt.descriptors.is_empty() {
             return;
         }
         ui.add_space(6.0);
-        section(ui, "分区公钥描述符");
+        section(ui, &tr!("partition-public-key-descriptors"));
         TableBuilder::new(ui)
             .striped(true)
             .column(Column::auto().at_least(120.0))
@@ -381,19 +429,19 @@ impl PartitionPage {
             .column(Column::remainder().at_least(140.0))
             .header(24.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("分区");
+                    ui.strong(tr!("partition"));
                 });
                 header.col(|ui| {
-                    ui.strong("算法");
+                    ui.strong(tr!("algorithm"));
                 });
                 header.col(|ui| {
-                    ui.strong("密钥长度");
+                    ui.strong(tr!("key-length"));
                 });
                 header.col(|ui| {
-                    ui.strong("公钥 SHA256(前 16 位)");
+                    ui.strong(tr!("public-key-sha256-short"));
                 });
                 header.col(|ui| {
-                    ui.strong("备份密钥");
+                    ui.strong(tr!("backup-key"));
                 });
             })
             .body(|mut body| {
@@ -414,21 +462,21 @@ impl PartitionPage {
                                 .chars()
                                 .take(16)
                                 .collect::<String>();
-                            ui.label(egui::RichText::new(format!("{short}")).monospace().weak())
+                            ui.label(egui::RichText::new(short).monospace().weak())
                                 .on_hover_text(&descriptor.pubkey_sha256);
                         });
                         row.col(|ui| match &descriptor.backup_equals_main {
                             Some(true) => {
-                                ui.label(egui::RichText::new("与主密钥相同").weak());
+                                ui.label(egui::RichText::new(tr!("same-as-main-key")).weak());
                             }
                             Some(false) => {
                                 ui.label(
-                                    egui::RichText::new("不同")
+                                    egui::RichText::new(tr!("different"))
                                         .color(egui::Color32::from_rgb(230, 170, 40)),
                                 );
                             }
                             None => {
-                                ui.label(egui::RichText::new("无").weak());
+                                ui.label(egui::RichText::new(tr!("none")).weak());
                             }
                         });
                     });
@@ -441,25 +489,25 @@ impl PartitionPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "GPT 中没有可读取的表",
+                tr!("gpt-no-readable-table"),
             );
             return;
         };
         let header = &first_table.header;
-        section(ui, "GPT 头部");
+        section(ui, &tr!("gpt-header"));
         egui::Grid::new("gpt-header-grid")
             .num_columns(2)
             .spacing([18.0, 6.0])
             .show(ui, |ui| {
                 kv(
                     ui,
-                    "版本",
+                    &tr!("version"),
                     format!("{}.{}", header.revision >> 16, header.revision & 0xFFFF),
                 );
-                kv(ui, "磁盘 GUID", &header.disk_guid);
+                kv(ui, &tr!("disk-guid"), &header.disk_guid);
                 kv(
                     ui,
-                    "可用 LBA 范围",
+                    &tr!("usable-lba-range"),
                     format!(
                         "{} - {}",
                         crate::util::hex64(header.first_usable_lba),
@@ -468,14 +516,11 @@ impl PartitionPage {
                 );
                 kv(
                     ui,
-                    "分区表条目",
-                    format!(
-                        "{} 个，每个 {} B",
-                        header.partition_entry_count, header.partition_entry_size
-                    ),
+                    &tr!("partition-table-entries"),
+                    tr!("entries-each-bytes", "count" => header.partition_entry_count, "size" => header.partition_entry_size),
                 );
-                kv(ui, "GPT 表", gpt.tables.len().to_string());
-                kv(ui, "已使用条目", gpt.partition_count().to_string());
+                kv(ui, &tr!("gpt-tables"), gpt.tables.len().to_string());
+                kv(ui, &tr!("used-entries"), gpt.partition_count().to_string());
             });
 
         if gpt.partition_count() == 0 {
@@ -483,7 +528,7 @@ impl PartitionPage {
         }
 
         ui.add_space(6.0);
-        section(ui, "分区");
+        section(ui, &tr!("partition"));
         TableBuilder::new(ui)
             .striped(true)
             .column(Column::auto().at_least(38.0))
@@ -495,25 +540,25 @@ impl PartitionPage {
             .column(Column::remainder().at_least(180.0))
             .header(24.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("序号");
+                    ui.strong(tr!("number"));
                 });
                 header.col(|ui| {
-                    ui.strong("GPT 表偏移");
+                    ui.strong(tr!("gpt-table-offset"));
                 });
                 header.col(|ui| {
-                    ui.strong("分区");
+                    ui.strong(tr!("partition"));
                 });
                 header.col(|ui| {
-                    ui.strong("起始 LBA");
+                    ui.strong(tr!("start-lba"));
                 });
                 header.col(|ui| {
-                    ui.strong("结束 LBA");
+                    ui.strong(tr!("end-lba"));
                 });
                 header.col(|ui| {
-                    ui.strong("大小");
+                    ui.strong(tr!("size"));
                 });
                 header.col(|ui| {
-                    ui.strong("类型 GUID");
+                    ui.strong(tr!("type-guid"));
                 });
             })
             .body(|mut body| {
@@ -540,11 +585,11 @@ impl PartitionPage {
                             });
                             row.col(|ui| {
                                 ui.label(egui::RichText::new(&partition.type_guid).monospace())
-                                    .on_hover_text(format!(
-                                        "唯一 GUID: {}\n属性: 0x{:X}\n条目数组偏移: 0x{:X}",
-                                        partition.unique_guid,
-                                        partition.attributes,
-                                        table.entry_array_offset,
+                                    .on_hover_text(tr!(
+                                        "gpt-partition-tooltip",
+                                        "guid" => partition.unique_guid.clone(),
+                                        "attributes" => format!("0x{:X}", partition.attributes),
+                                        "offset" => format!("0x{:X}", table.entry_array_offset),
                                     ));
                             });
                         });
@@ -569,19 +614,19 @@ fn render_cert(ui: &mut egui::Ui, cert: &CertSummary) {
         .show(ui, |ui| {
             kv(
                 ui,
-                "版本",
+                &tr!("version"),
                 format!("{}.{}", cert.version_major, cert.version_minor),
             );
-            kv(ui, "分区名", &cert.partition_name);
+            kv(ui, &tr!("partition-name"), &cert.partition_name);
             kv(
                 ui,
-                "原始镜像长度",
+                &tr!("original-image-length"),
                 crate::util::hex64(cert.image_original_len),
             );
-            kv(ui, "镜像长度", crate::util::hex64(cert.image_len));
+            kv(ui, &tr!("image-length"), crate::util::hex64(cert.image_len));
             kv(
                 ui,
-                "verity 类型",
+                &tr!("verity-type"),
                 format!(
                     "{} ({})",
                     cert.verity_type,
@@ -594,7 +639,7 @@ fn render_cert(ui: &mut egui::Ui, cert: &CertSummary) {
             );
             kv(
                 ui,
-                "哈希算法",
+                &tr!("hash-algorithm"),
                 format!(
                     "{} ({})",
                     cert.hash_algo,
@@ -607,8 +652,8 @@ fn render_cert(ui: &mut egui::Ui, cert: &CertSummary) {
                     }
                 ),
             );
-            kv(ui, "盐长度", cert.salt_size.to_string());
-            kv(ui, "摘要长度", cert.digest_size.to_string());
+            kv(ui, &tr!("salt-length"), cert.salt_size.to_string());
+            kv(ui, &tr!("digest-length"), cert.digest_size.to_string());
         });
 }
 

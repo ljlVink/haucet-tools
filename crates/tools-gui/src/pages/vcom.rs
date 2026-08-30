@@ -59,13 +59,13 @@ impl VcomPage {
     }
 
     fn status_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "VCOM 设备");
+        section(ui, &tr!("vcom-devices"));
         ui.horizontal(|ui| {
             if run_button(
                 ui,
-                "检测设备连接",
+                &tr!("detect-device"),
                 !app.job_running(),
-                Some("枚举串口和 Huawei USB VCOM 设备"),
+                Some(&tr!("vcom-detect-hint")),
             )
             .clicked()
             {
@@ -73,7 +73,7 @@ impl VcomPage {
             }
             if app.job_running() {
                 ui.add(egui::Spinner::new().size(16.0));
-                ui.label(egui::RichText::new("正在检测...").weak());
+                ui.label(egui::RichText::new(tr!("detecting")).weak());
             }
         });
         ui.add_space(6.0);
@@ -83,7 +83,7 @@ impl VcomPage {
             return;
         }
         let Some(status) = &self.status else {
-            ui.label(egui::RichText::new("尚未获取设备扫描结果。").weak());
+            ui.label(egui::RichText::new(tr!("vcom-no-scan-result")).weak());
             return;
         };
 
@@ -91,14 +91,18 @@ impl VcomPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "未找到 VCOM 设备。",
+                tr!("vcom-not-found"),
             );
             return;
         }
 
         if !status.ports.is_empty() {
             ui.horizontal(|ui| {
-                badge_text(ui, "串口数量", egui::Color32::from_rgb(90, 200, 120));
+                badge_text(
+                    ui,
+                    &tr!("serial-port-count"),
+                    egui::Color32::from_rgb(90, 200, 120),
+                );
                 ui.label(status.ports.len().to_string());
             });
             egui::Frame::group(ui.style())
@@ -117,7 +121,7 @@ impl VcomPage {
 
         if !status.usb.is_empty() {
             ui.add_space(6.0);
-            ui.label(egui::RichText::new("Huawei USB 设备").weak());
+            ui.label(egui::RichText::new(tr!("huawei-usb-devices")).weak());
             for device in &status.usb {
                 ui.label(egui::RichText::new(device).monospace().size(12.0));
             }
@@ -125,7 +129,7 @@ impl VcomPage {
     }
 
     fn flash_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        section(ui, "VCOM 刷机");
+        section(ui, &tr!("page-vcom-title"));
 
         let choices = self
             .status
@@ -133,7 +137,7 @@ impl VcomPage {
             .map(|status| status.ports.clone())
             .unwrap_or_default();
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("串口").strong());
+            ui.label(egui::RichText::new(tr!("serial-port")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.port)
                     .hint_text("COM3")
@@ -141,9 +145,9 @@ impl VcomPage {
             );
             egui::ComboBox::from_id_salt("vcom-port-select")
                 .selected_text(if self.port.trim().is_empty() {
-                    "选择串口"
+                    tr!("choose-serial-port")
                 } else {
-                    self.port.trim()
+                    self.port.trim().to_owned()
                 })
                 .show_ui(ui, |ui| {
                     for choice in &choices {
@@ -157,7 +161,7 @@ impl VcomPage {
         });
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("地址").strong());
+            ui.label(egui::RichText::new(tr!("address")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.address)
                     .hint_text("0x80000000")
@@ -166,20 +170,20 @@ impl VcomPage {
         });
         if !self.address.trim().is_empty() && parse_address(self.address.trim()).is_err() {
             ui.label(
-                egui::RichText::new("地址必须为十六进制，例如 0x80000000。")
+                egui::RichText::new(tr!("hex-address-required"))
                     .color(egui::Color32::from_rgb(230, 170, 40)),
             );
         }
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Loader 文件").strong());
+            ui.label(egui::RichText::new(tr!("loader-file")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.file)
-                    .hint_text("Loader 文件路径")
+                    .hint_text(tr!("loader-file-path"))
                     .desired_width(ui.available_width() - 170.0),
             );
-            if ui.button("选择文件").clicked()
-                && let Some(path) = app.pick_file("选择 VCOM Loader", &[])
+            if ui.button(tr!("choose-file")).clicked()
+                && let Some(path) = app.pick_file(&tr!("choose-vcom-loader"), &[])
             {
                 self.set_file(&path);
             }
@@ -196,9 +200,9 @@ impl VcomPage {
             && parsed_address.is_ok();
         if run_button(
             ui,
-            "刷写 Loader",
+            &tr!("flash-loader"),
             ready,
-            Some("将 Loader 上传到选中的 VCOM 串口"),
+            Some(&tr!("flash-loader-hint")),
         )
         .clicked()
         {
@@ -211,7 +215,7 @@ impl VcomPage {
             });
         }
         if app.job_running() {
-            ui.label(egui::RichText::new("刷机任务运行中...").weak());
+            ui.label(egui::RichText::new(tr!("flash-task-running")).weak());
         }
 
         if let Some(result) = &self.result {
@@ -246,7 +250,8 @@ impl VcomPage {
                         }
                         Err(error) => {
                             self.status = None;
-                            self.status_error = Some(format!("解析 VCOM 状态失败: {error}"));
+                            self.status_error =
+                                Some(tr!("vcom-status-parse-error", "error" => error.to_string()));
                         }
                     }
                 }

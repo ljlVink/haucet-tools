@@ -173,11 +173,11 @@ impl OemInfoPage {
 
     fn render_input(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("镜像文件").strong());
+            ui.label(egui::RichText::new(tr!("image-file")).strong());
             let field_width = (ui.available_width() - 190.0).max(120.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.input)
-                    .hint_text("选择 OEMINFO 镜像或拖放文件")
+                    .hint_text(tr!("choose-oeminfo-image-hint"))
                     .font(egui::TextStyle::Monospace)
                     .desired_width(field_width),
             );
@@ -194,8 +194,8 @@ impl OemInfoPage {
             if submit {
                 self.request_inspection(!self.input.trim().is_empty());
             }
-            if ui.button("选择文件").clicked()
-                && let Some(path) = app.pick_file("选择 OEMINFO 镜像", &[])
+            if ui.button(tr!("choose-file")).clicked()
+                && let Some(path) = app.pick_file(&tr!("choose-oeminfo-image"), &[])
             {
                 self.select_input(path.display().to_string());
             }
@@ -208,45 +208,34 @@ impl OemInfoPage {
                 return;
             };
 
-            section(ui, "镜像概览");
+            section(ui, &tr!("image-overview"));
             egui::Grid::new("oeminfo-summary-grid")
                 .num_columns(4)
                 .spacing([18.0, 7.0])
                 .show(ui, |ui| {
-                    summary_value(ui, "文件大小", human_size(summary.file_size));
-                    summary_value(ui, "区域大小", human_size(summary.region_size));
+                    summary_value(ui, &tr!("file-size"), human_size(summary.file_size));
+                    summary_value(ui, &tr!("region-size"), human_size(summary.region_size));
                     ui.end_row();
                     summary_value(
                         ui,
-                        "数据块",
-                        format!("{}（活动 {}）", summary.total_blocks, summary.active_blocks),
+                        &tr!("data-blocks"),
+                        tr!("total-active-count", "total" => summary.total_blocks, "active" => summary.active_blocks),
                     );
                     summary_value(
                         ui,
-                        "候选头",
-                        format!(
-                            "{}（丢弃 {}）",
-                            summary.candidate_headers, summary.discarded_headers
-                        ),
+                        &tr!("candidate-headers"),
+                        tr!("total-discarded-count", "total" => summary.candidate_headers, "discarded" => summary.discarded_headers),
                     );
                     ui.end_row();
                     summary_value(
                         ui,
-                        "区域分布",
-                        format!(
-                            "A {} / B {} / 其他 {}",
-                            summary.region_a_blocks,
-                            summary.region_b_blocks,
-                            summary.unknown_region_blocks
-                        ),
+                        &tr!("region-distribution"),
+                        tr!("region-counts", "a" => summary.region_a_blocks, "b" => summary.region_b_blocks, "other" => summary.unknown_region_blocks),
                     );
                     summary_value(
                         ui,
-                        "布局分布",
-                        format!(
-                            "标准 {} / 紧凑 {} / 复用 {}",
-                            summary.standard_blocks, summary.compact_blocks, summary.reused_blocks
-                        ),
+                        &tr!("layout-distribution"),
+                        tr!("layout-counts", "standard" => summary.standard_blocks, "compact" => summary.compact_blocks, "reused" => summary.reused_blocks),
                     );
                     ui.end_row();
                 });
@@ -256,10 +245,7 @@ impl OemInfoPage {
                 message_box(
                     ui,
                     egui::Color32::from_rgb(225, 155, 60),
-                    format!(
-                        "扫描时丢弃了 {} 个重叠或无效的候选头。",
-                        summary.discarded_headers
-                    ),
+                    tr!("discarded-header-warning", "count" => summary.discarded_headers),
                 );
             }
         }
@@ -281,11 +267,9 @@ impl OemInfoPage {
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         ui.label(
-            egui::RichText::new(format!(
-                "显示 {} / {} 个数据块",
-                visible.len(),
-                summary.blocks.len()
-            ))
+            egui::RichText::new(
+                tr!("showing-blocks", "shown" => visible.len(), "total" => summary.blocks.len()),
+            )
             .small()
             .weak(),
         );
@@ -317,14 +301,14 @@ impl OemInfoPage {
 
     fn render_filter(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("筛选").strong());
+            ui.label(egui::RichText::new(tr!("filter")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text("ID、区域、布局、类型或预览内容")
+                    .hint_text(tr!("oeminfo-filter-hint"))
                     .desired_width((ui.available_width() - 170.0).max(150.0)),
             );
-            ui.checkbox(&mut self.active_only, "仅活动副本");
-            if !self.filter.is_empty() && ui.button("清除").clicked() {
+            ui.checkbox(&mut self.active_only, tr!("active-only"));
+            if !self.filter.is_empty() && ui.button(tr!("clear")).clicked() {
                 self.filter.clear();
             }
         });
@@ -367,7 +351,7 @@ impl OemInfoPage {
             self.summary = None;
             self.selected_block = None;
             self.clear_preview();
-            self.error = Some("后台任务未返回 OEMINFO 摘要".to_owned());
+            self.error = Some(tr!("oeminfo-summary-missing"));
             return;
         };
         match serde_json::from_value::<OemInfoImageSummary>(payload) {
@@ -385,7 +369,7 @@ impl OemInfoPage {
                 self.summary = None;
                 self.selected_block = None;
                 self.clear_preview();
-                self.error = Some(format!("无法解析 OEMINFO 读取结果: {error}"));
+                self.error = Some(tr!("oeminfo-result-parse-error", "error" => error.to_string()));
             }
         }
     }
@@ -422,7 +406,7 @@ impl OemInfoPage {
             egui::Color32::from_rgb(230, 90, 90)
         };
         message_box(ui, color, &result.summary);
-        if result.ok && ui.button("打开导出位置").clicked() {
+        if result.ok && ui.button(tr!("open-export-location")).clicked() {
             open_in_file_manager(Path::new(&result.output));
         }
     }
@@ -433,24 +417,24 @@ impl OemInfoPage {
         app: &mut HaucetApp,
         block: &OemInfoBlockSummary,
     ) {
-        section(ui, "图片预览");
+        section(ui, &tr!("image-preview"));
         let key = self.preview_key(block);
         self.ensure_preview(ui.ctx(), key.clone(), block.clone());
 
         ui.horizontal_wrapped(|ui| {
             ui.label(
                 egui::RichText::new(match block.payload_kind {
-                    OemInfoPayloadKind::ImageRaw => "BMP",
-                    OemInfoPayloadKind::ImageGzip => "GZIP / BMP",
-                    _ => "图片",
+                    OemInfoPayloadKind::ImageRaw => "BMP".to_owned(),
+                    OemInfoPayloadKind::ImageGzip => "GZIP / BMP".to_owned(),
+                    _ => tr!("image"),
                 })
                 .strong(),
             );
             ui.label(human_size(block.length.saturating_sub(0x1a) as u64));
 
             let (extension, button_label) = match block.payload_kind {
-                OemInfoPayloadKind::ImageRaw => ("bmp", "导出原始 BMP"),
-                OemInfoPayloadKind::ImageGzip => ("gz", "导出原始 GZIP"),
+                OemInfoPayloadKind::ImageRaw => ("bmp", tr!("export-raw-bmp")),
+                OemInfoPayloadKind::ImageGzip => ("gz", tr!("export-raw-gzip")),
                 _ => return,
             };
             let can_export = !app.job_running() && self.operation.is_none();
@@ -462,7 +446,7 @@ impl OemInfoPage {
                     "oeminfo_{}_{}_0x{:X}.{extension}",
                     block.id, block.sub_id, block.offset
                 );
-                if let Some(output) = app.pick_save("导出 OEMINFO 图片", &suggested) {
+                if let Some(output) = app.pick_save(&tr!("export-oeminfo-image"), &suggested) {
                     self.export_result = None;
                     let output = output.display().to_string();
                     self.operation = Some(OemInfoOperation::Export {
@@ -484,19 +468,13 @@ impl OemInfoPage {
             .filter(|preview| preview.key == key)
         {
             ui.label(
-                egui::RichText::new(format!(
-                    "{} x {} 像素",
-                    preview.original_size[0], preview.original_size[1]
-                ))
+                egui::RichText::new(tr!("image-pixels", "width" => preview.original_size[0], "height" => preview.original_size[1]))
                 .small()
                 .weak(),
             );
             let display_size = preview_display_size(preview.preview_size, ui.available_width());
             ui.add(egui::Image::new(&preview.texture).fit_to_exact_size(display_size))
-                .on_hover_text(format!(
-                    "预览纹理 {} x {}",
-                    preview.preview_size[0], preview.preview_size[1]
-                ));
+                .on_hover_text(tr!("preview-texture-size", "width" => preview.preview_size[0], "height" => preview.preview_size[1]));
         } else if let Some(message) = self
             .preview_error
             .as_ref()
@@ -506,15 +484,15 @@ impl OemInfoPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 90, 90),
-                format!("无法生成图片预览: {message}"),
+                tr!("preview-failed", "error" => message),
             );
-            if ui.button("重新加载预览").clicked() {
+            if ui.button(tr!("reload-preview")).clicked() {
                 self.preview_error = None;
             }
         } else {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new().size(16.0));
-                ui.label(egui::RichText::new("正在生成预览").weak());
+                ui.label(egui::RichText::new(tr!("generating-preview")).weak());
             });
         }
     }
@@ -720,7 +698,9 @@ fn decode_image_preview(
     ensure_preview_active(cancelled)?;
     let embedded =
         common::oeminfo::read_embedded_image_with_limit(path, block, MAX_PREVIEW_SOURCE_SIZE)
-            .with_context(|| format!("读取 ID {} / SubID {} 图片", block.id, block.sub_id))?;
+            .with_context(
+                || tr!("read-oeminfo-image", "id" => block.id, "subid" => block.sub_id),
+            )?;
     ensure_preview_active(cancelled)?;
     decode_image_data(embedded.kind, embedded.data, cancelled)
 }
@@ -735,10 +715,10 @@ fn decode_image_data(
         OemInfoPayloadKind::ImageGzip => {
             decompress_gzip_limited(data, MAX_PREVIEW_DECOMPRESSED_SIZE, cancelled)?
         }
-        kind => anyhow::bail!("载荷类型 {kind} 不是可预览图片"),
+        kind => anyhow::bail!(tr!("payload-not-previewable", "kind" => kind.to_string())),
     };
     ensure_preview_active(cancelled)?;
-    ensure!(bmp.starts_with(b"BM"), "图片数据不是 BMP 格式");
+    ensure!(bmp.starts_with(b"BM"), "{}", tr!("image-not-bmp"));
 
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_PREVIEW_IMAGE_SIDE);
@@ -746,12 +726,13 @@ fn decode_image_data(
     limits.max_alloc = Some(MAX_PREVIEW_DECODE_ALLOCATION);
     let mut reader = image::ImageReader::with_format(Cursor::new(bmp), image::ImageFormat::Bmp);
     reader.limits(limits);
-    let decoded = reader.decode().context("解码 OEMINFO BMP 图片")?;
+    let decoded = reader.decode().context(tr!("decode-oeminfo-bmp"))?;
     ensure_preview_active(cancelled)?;
     let original_size = [decoded.width(), decoded.height()];
     ensure!(
         original_size[0] != 0 && original_size[1] != 0,
-        "BMP 图片尺寸为空"
+        "{}",
+        tr!("bmp-size-empty")
     );
     let preview = if original_size[0] > MAX_PREVIEW_TEXTURE_SIDE
         || original_size[1] > MAX_PREVIEW_TEXTURE_SIDE
@@ -769,7 +750,8 @@ fn decode_image_data(
             .checked_mul(size[1])
             .and_then(|pixels| pixels.checked_mul(4))
             == Some(rgba.len()),
-        "BMP 解码结果尺寸无效"
+        "{}",
+        tr!("bmp-decoded-size-invalid")
     );
     Ok(DecodedPreview {
         rgba,
@@ -785,7 +767,9 @@ fn decompress_gzip_limited(data: Vec<u8>, limit: u64, cancelled: &AtomicBool) ->
     let mut chunk = [0_u8; 64 * 1024];
     loop {
         ensure_preview_active(cancelled)?;
-        let count = limited.read(&mut chunk).context("解压 OEMINFO GZIP 图片")?;
+        let count = limited
+            .read(&mut chunk)
+            .context(tr!("decompress-oeminfo-gzip"))?;
         if count == 0 {
             break;
         }
@@ -793,8 +777,8 @@ fn decompress_gzip_limited(data: Vec<u8>, limit: u64, cancelled: &AtomicBool) ->
     }
     ensure!(
         decoded.len() as u64 <= limit,
-        "解压后图片超过 {}",
-        human_size(limit)
+        "{}",
+        tr!("decompressed-image-too-large", "limit" => human_size(limit))
     );
     Ok(decoded)
 }
@@ -826,9 +810,9 @@ fn block_matches(block: &OemInfoBlockSummary, filter: &str) -> bool {
         block.layout,
         block.payload_kind,
         if block.active {
-            "active 活动"
+            tr!("active")
         } else {
-            "inactive 非活动"
+            tr!("inactive")
         },
         block.offset,
         block.length,
@@ -875,14 +859,14 @@ fn render_blocks_table(
         .column(Column::exact(88.0))
         .header(30.0, |mut header| {
             for label in [
-                "状态",
-                "ID / SubID",
-                "区域",
-                "布局",
-                "载荷类型",
-                "代次",
-                "偏移",
-                "长度",
+                tr!("status"),
+                "ID / SubID".to_owned(),
+                tr!("region"),
+                tr!("layout"),
+                tr!("payload-type"),
+                tr!("generation"),
+                tr!("offset"),
+                tr!("length"),
             ] {
                 header.col(|ui| {
                     ui.strong(label);
@@ -895,7 +879,7 @@ fn render_blocks_table(
                     for column in 0..8 {
                         row.col(|ui| {
                             if column == 4 {
-                                ui.label(egui::RichText::new("没有匹配的数据块").weak());
+                                ui.label(egui::RichText::new(tr!("no-matching-blocks")).weak());
                             }
                         });
                     }
@@ -909,9 +893,9 @@ fn render_blocks_table(
                 row.set_selected(selected_block == Some(index));
                 row.col(|ui| {
                     let (text, color) = if block.active {
-                        ("活动", egui::Color32::from_rgb(95, 190, 125))
+                        (tr!("active"), egui::Color32::from_rgb(95, 190, 125))
                     } else {
-                        ("非活动", ui.visuals().weak_text_color())
+                        (tr!("inactive"), ui.visuals().weak_text_color())
                     };
                     ui.label(egui::RichText::new(text).strong().color(color));
                 });
@@ -949,7 +933,7 @@ fn render_blocks_table(
 }
 
 fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
-    section(ui, "数据块详情");
+    section(ui, &tr!("data-block-details"));
     ui.horizontal_wrapped(|ui| {
         let color = if block.active {
             egui::Color32::from_rgb(95, 190, 125)
@@ -958,9 +942,9 @@ fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
         };
         ui.label(
             egui::RichText::new(if block.active {
-                "活动副本"
+                tr!("active-copy")
             } else {
-                "非活动副本"
+                tr!("inactive-copy")
             })
             .strong()
             .color(color),
@@ -979,41 +963,38 @@ fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
         .num_columns(4)
         .spacing([18.0, 7.0])
         .show(ui, |ui| {
-            detail_value(ui, "区域", block.region.to_string());
-            detail_value(ui, "布局", block.layout.to_string());
+            detail_value(ui, &tr!("region"), block.region.to_string());
+            detail_value(ui, &tr!("layout"), block.layout.to_string());
             ui.end_row();
-            detail_value(ui, "头版本", block.version.to_string());
-            detail_value(ui, "代次", block.age.to_string());
+            detail_value(ui, &tr!("header-version"), block.version.to_string());
+            detail_value(ui, &tr!("generation"), block.age.to_string());
             ui.end_row();
-            detail_value(ui, "块偏移", format!("0x{:X}", block.offset));
-            detail_value(ui, "头大小", format!("0x{:X}", block.header_size));
+            detail_value(ui, &tr!("block-offset"), format!("0x{:X}", block.offset));
+            detail_value(ui, &tr!("header-size"), format!("0x{:X}", block.header_size));
             ui.end_row();
             detail_value(
                 ui,
-                "载荷范围",
+                &tr!("payload-range"),
                 format!("0x{payload_offset:X}..0x{payload_end:X}"),
             );
             detail_value(
                 ui,
-                "载荷大小",
+                &tr!("payload-size"),
                 format!("{} (0x{:X})", human_size(block.length as u64), block.length),
             );
             ui.end_row();
-            detail_value(ui, "载荷类型", block.payload_kind.to_string());
+            detail_value(ui, &tr!("payload-type"), block.payload_kind.to_string());
             detail_value(
                 ui,
-                "填充字节",
-                format!(
-                    "头 0x{:02X} / 块 0x{:02X}",
-                    block.header_padding_byte, block.block_padding_byte
-                ),
+                &tr!("padding-bytes"),
+                tr!("header-block-padding", "header" => format!("0x{:02X}", block.header_padding_byte), "block" => format!("0x{:02X}", block.block_padding_byte)),
             );
             ui.end_row();
             if block.tlv_parts != 0 || block.tlv_description.is_some() {
-                detail_value(ui, "TLV 段", block.tlv_parts.to_string());
+                detail_value(ui, &tr!("tlv-segments"), block.tlv_parts.to_string());
                 detail_value(
                     ui,
-                    "TLV 描述",
+                    &tr!("tlv-description"),
                     block.tlv_description.as_deref().unwrap_or("-"),
                 );
                 ui.end_row();
@@ -1022,12 +1003,12 @@ fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
                 let image_offset = payload_offset.saturating_add(0x1a);
                 detail_value(
                     ui,
-                    "镜像版本",
+                    &tr!("image-version"),
                     block.image_version_hex.as_deref().unwrap_or("-"),
                 );
                 detail_value(
                     ui,
-                    "随机调整",
+                    &tr!("random-adjustment"),
                     block
                         .image_random_adjust
                         .map(|value| format!("0x{value:X}"))
@@ -1036,12 +1017,12 @@ fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
                 ui.end_row();
                 detail_value(
                     ui,
-                    "原始文件范围",
+                    &tr!("original-file-range"),
                     format!("0x{image_offset:X}..0x{payload_end:X}"),
                 );
                 detail_value(
                     ui,
-                    "原始文件大小",
+                    &tr!("original-file-size"),
                     human_size(block.length.saturating_sub(0x1a) as u64),
                 );
                 ui.end_row();
@@ -1051,8 +1032,8 @@ fn render_block_details(ui: &mut egui::Ui, block: &OemInfoBlockSummary) {
     if let Some(preview) = block.text_preview.as_deref() {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("文本预览").strong());
-            if ui.button("复制预览").clicked() {
+            ui.label(egui::RichText::new(tr!("text-preview")).strong());
+            if ui.button(tr!("copy-preview")).clicked() {
                 ui.ctx().copy_text(preview.to_owned());
             }
         });

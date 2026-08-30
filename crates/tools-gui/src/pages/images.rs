@@ -27,8 +27,8 @@ impl ImagesPage {
                     if kind_card(
                         &mut columns[0],
                         self.kind == ImageKind::Erofs,
-                        "EROFS 分区镜像",
-                        "system / vendor 等分区的解包与重建",
+                        &tr!("images-erofs-title"),
+                        &tr!("images-erofs-description"),
                     )
                     .clicked()
                     {
@@ -37,8 +37,8 @@ impl ImagesPage {
                     if kind_card(
                         &mut columns[1],
                         self.kind == ImageKind::Ramdisk,
-                        "Ramdisk 启动镜像",
-                        "ramdisk 解包、重建与 init_early Patch",
+                        &tr!("images-ramdisk-title"),
+                        &tr!("images-ramdisk-description"),
                     )
                     .clicked()
                     {
@@ -47,8 +47,8 @@ impl ImagesPage {
                     if kind_card(
                         &mut columns[2],
                         self.kind == ImageKind::Partition,
-                        "分区信息",
-                        "识别镜像封装、HVB 证书与 Shannon 熵",
+                        &tr!("images-partition-title"),
+                        &tr!("images-partition-description"),
                     )
                     .clicked()
                     {

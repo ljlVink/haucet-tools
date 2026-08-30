@@ -3,25 +3,25 @@ use common::entropy::EntropySummary;
 use eframe::egui;
 
 pub(crate) fn render_summary(ui: &mut egui::Ui, summary: &EntropySummary) {
-    section(ui, "信息熵");
+    section(ui, &tr!("entropy-title"));
     egui::Grid::new("entropy-summary-grid")
         .num_columns(2)
         .spacing([18.0, 6.0])
         .show(ui, |ui| {
-            kv(ui, "文件大小", human_size(summary.size));
+            kv(ui, &tr!("file-size"), human_size(summary.size));
             kv(
                 ui,
-                "Shannon 熵",
+                &tr!("shannon-entropy"),
                 format!("{:.6} bits/byte", summary.entropy_bits_per_byte),
             );
             kv(
                 ui,
-                "接近随机程度",
+                &tr!("randomness"),
                 format!("{:.2}%", summary.normalized_percent()),
             );
             kv(
                 ui,
-                "出现过的字节值",
+                &tr!("unique-byte-values"),
                 format!("{}/256", summary.unique_bytes),
             );
         });
@@ -30,16 +30,16 @@ pub(crate) fn render_summary(ui: &mut egui::Ui, summary: &EntropySummary) {
 }
 
 fn render_window_chart(ui: &mut egui::Ui, summary: &EntropySummary) {
-    section(ui, "滑动窗口熵图");
+    section(ui, &tr!("entropy-window-chart"));
     if summary.windows.is_empty() {
-        ui.label(egui::RichText::new("没有可绘制的数据").weak());
+        ui.label(egui::RichText::new(tr!("no-chart-data")).weak());
         return;
     }
     ui.label(
-        egui::RichText::new(format!(
-            "窗口 {} · {} 个采样点",
-            human_size(summary.window_size),
-            summary.windows.len()
+        egui::RichText::new(tr!(
+            "entropy-window-samples",
+            "window" => human_size(summary.window_size),
+            "count" => summary.windows.len(),
         ))
         .weak()
         .small(),
@@ -108,5 +108,5 @@ fn render_window_chart(ui: &mut egui::Ui, summary: &EntropySummary) {
         egui::FontId::monospace(10.0),
         ui.visuals().weak_text_color(),
     );
-    response.on_hover_text("横轴: 文件偏移; 纵轴: Shannon 熵(bits/byte)");
+    response.on_hover_text(tr!("entropy-chart-hint"));
 }

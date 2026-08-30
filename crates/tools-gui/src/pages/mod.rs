@@ -26,38 +26,29 @@ pub enum Page {
 }
 
 impl Page {
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> String {
         match self {
-            Self::Home => "快速开始",
-            Self::Package => "更新包解包",
-            Self::Images => "镜像工作区",
-            Self::Fastboot => "Fastboot 刷机",
-            Self::Vcom => "VCOM 刷机",
-            Self::Cpio => "Cpio 浏览器",
-            Self::Nvme => "NVMe / NVE",
-            Self::OemInfo => "OEMINFO 浏览器",
+            Self::Home => tr!("page-home-title"),
+            Self::Package => tr!("page-package-title"),
+            Self::Images => tr!("page-images-title"),
+            Self::Fastboot => tr!("page-fastboot-title"),
+            Self::Vcom => tr!("page-vcom-title"),
+            Self::Cpio => tr!("page-cpio-title"),
+            Self::Nvme => tr!("page-nvme-title"),
+            Self::OemInfo => tr!("page-oeminfo-title"),
         }
     }
 
-    pub fn header(self) -> Option<(&'static str, &'static str)> {
+    pub fn header(self) -> Option<(String, String)> {
         match self {
             Self::Home => None,
-            Self::Package => Some((
-                "更新包解包",
-                "读取更新包内容，选择需要的分区并解包到工作目录。",
-            )),
-            Self::Images => Some((
-                "镜像工作区",
-                "在同一处识别镜像，并完成分区镜像与启动镜像的解包、修改和重建。",
-            )),
-            Self::Fastboot => Some(("Fastboot 刷机", "HarmonyOS/Android Fastboot 刷机")),
-            Self::Vcom => Some(("VCOM 刷机", "HiSilicon VCOM 刷机")),
-            Self::Cpio => Some((
-                "Cpio 浏览器",
-                "浏览、提取和编辑 CPIO 文件、Ramdisk 镜像及解包工作区。",
-            )),
-            Self::Nvme => Some(("NVMe / NVE 编辑器", "查看与修改 HiSilicon NVE 条目")),
-            Self::OemInfo => Some(("OEMINFO 浏览器", "查看 OEMINFO 数据块、A/B 副本与载荷类型")),
+            Self::Package => Some((tr!("page-package-title"), tr!("page-package-description"))),
+            Self::Images => Some((tr!("page-images-title"), tr!("page-images-description"))),
+            Self::Fastboot => Some((tr!("page-fastboot-title"), tr!("page-fastboot-description"))),
+            Self::Vcom => Some((tr!("page-vcom-title"), tr!("page-vcom-description"))),
+            Self::Cpio => Some((tr!("page-cpio-title"), tr!("page-cpio-description"))),
+            Self::Nvme => Some((tr!("page-nvme-editor-title"), tr!("page-nvme-description"))),
+            Self::OemInfo => Some((tr!("page-oeminfo-title"), tr!("page-oeminfo-description"))),
         }
     }
 }

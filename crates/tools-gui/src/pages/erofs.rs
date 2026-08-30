@@ -83,9 +83,9 @@ impl ErofsPage {
 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("操作").weak());
-            ui.selectable_value(&mut self.tab, ErofsTab::Unpack, "解包镜像");
-            ui.selectable_value(&mut self.tab, ErofsTab::Repack, "重建镜像");
+            ui.label(egui::RichText::new(tr!("operation")).weak());
+            ui.selectable_value(&mut self.tab, ErofsTab::Unpack, tr!("unpack-image"));
+            ui.selectable_value(&mut self.tab, ErofsTab::Repack, tr!("rebuild-image"));
         });
         ui.add_space(8.0);
 
@@ -159,17 +159,20 @@ impl ErofsPage {
 
     fn unpack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("镜像文件").strong());
+            ui.label(egui::RichText::new(tr!("image-file")).strong());
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.unpack.image)
-                    .hint_text("分区镜像或拖放文件到这里")
+                    .hint_text(tr!("erofs-image-hint"))
                     .desired_width(ui.available_width() - 240.0),
             );
             if response.changed() {
                 self.update_unpack_output();
             }
-            if ui.button("选择文件").clicked()
-                && let Some(path) = app.pick_file("选择 EROFS 镜像", &[("镜像", &["img"])])
+            if ui.button(tr!("choose-file")).clicked()
+                && let Some(path) = app.pick_file(
+                    &tr!("choose-erofs-image"),
+                    &[(tr!("filter-image").as_str(), &["img"])],
+                )
             {
                 self.select_unpack_image(path.display().to_string());
             }
@@ -180,27 +183,27 @@ impl ErofsPage {
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("输出工作区").strong());
+            ui.label(egui::RichText::new(tr!("output-workspace")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.unpack.output)
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录").clicked()
-                && let Some(dir) = app.pick_dir("选择输出目录")
+            if ui.button(tr!("choose-directory")).clicked()
+                && let Some(dir) = app.pick_dir(&tr!("choose-output-directory"))
             {
                 self.unpack.output = dir.display().to_string();
             }
         });
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.unpack.force, "覆盖已存在的工作区");
+            ui.checkbox(&mut self.unpack.force, tr!("overwrite-existing-workspace"));
         });
         ui.add_space(8.0);
         let ready = !app.job_running()
             && !self.unpack.image.trim().is_empty()
             && !self.unpack.output.trim().is_empty();
         let output = self.unpack.output.trim().to_owned();
-        if run_button(ui, "开始解包", ready, None).clicked() {
+        if run_button(ui, &tr!("start-unpack"), ready, None).clicked() {
             self.pending = Some(PendingOp::Unpack {
                 output: output.clone(),
             });
@@ -215,19 +218,17 @@ impl ErofsPage {
     }
 
     fn repack_tab(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
-        ui.label(
-            egui::RichText::new("把解包出来的工作区重新打包成分区镜像(保留原 HVB 证书)").weak(),
-        );
+        ui.label(egui::RichText::new(tr!("erofs-repack-help")).weak());
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("工作区目录").strong());
+            ui.label(egui::RichText::new(tr!("workspace-directory")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.repack.workspace)
-                    .hint_text("包含 haucet-erofs.json 的目录")
+                    .hint_text(tr!("erofs-workspace-hint"))
                     .desired_width(ui.available_width() - 240.0),
             );
-            if ui.button("选择目录").clicked()
-                && let Some(dir) = app.pick_dir("选择 EROFS 工作区")
+            if ui.button(tr!("choose-directory")).clicked()
+                && let Some(dir) = app.pick_dir(&tr!("choose-erofs-workspace"))
             {
                 self.select_workspace(dir.display().to_string());
             }
@@ -247,17 +248,25 @@ impl ErofsPage {
                         .num_columns(2)
                         .spacing([16.0, 6.0])
                         .show(ui, |ui| {
-                            crate::util::kv(ui, "分区", &manifest.partition);
-                            crate::util::kv(ui, "原始文件", &manifest.original_file_name);
-                            crate::util::kv(ui, "原始大小", human_size(manifest.original_size));
-                            crate::util::kv(ui, "原始 SHA256", &manifest.original_sha256);
+                            crate::util::kv(ui, &tr!("partition"), &manifest.partition);
                             crate::util::kv(
                                 ui,
-                                "HVB 证书",
+                                &tr!("original-file"),
+                                &manifest.original_file_name,
+                            );
+                            crate::util::kv(
+                                ui,
+                                &tr!("original-size"),
+                                human_size(manifest.original_size),
+                            );
+                            crate::util::kv(ui, &tr!("original-sha256"), &manifest.original_sha256);
+                            crate::util::kv(
+                                ui,
+                                &tr!("hvb-certificate"),
                                 if manifest.hvb.is_some() {
-                                    "保留(未重新签名)"
+                                    tr!("preserved-not-resigned")
                                 } else {
-                                    "无"
+                                    tr!("none")
                                 },
                             );
                         });
@@ -266,28 +275,28 @@ impl ErofsPage {
             message_box(
                 ui,
                 egui::Color32::from_rgb(230, 170, 40),
-                "注意: 重新打包不会重新签名 HVB 证书".to_owned(),
+                tr!("erofs-signature-warning"),
             );
         } else if let Some(error) = &self.repack.manifest_error {
             message_box(ui, egui::Color32::from_rgb(230, 90, 90), error);
         }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("输出镜像").strong());
+            ui.label(egui::RichText::new(tr!("output-image")).strong());
             ui.add(
                 egui::TextEdit::singleline(&mut self.repack.output)
-                    .hint_text("例如 new-system.img")
+                    .hint_text(tr!("erofs-output-hint"))
                     .desired_width(ui.available_width() - 260.0),
             );
-            if ui.button("选择保存位置").clicked()
-                && let Some(path) = app.pick_save("保存打包后的镜像", "new-partition.img")
+            if ui.button(tr!("choose-save-location")).clicked()
+                && let Some(path) = app.pick_save(&tr!("save-repacked-image"), "new-partition.img")
             {
                 self.repack.output = path.display().to_string();
             }
         });
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.checkbox(&mut self.repack.allow_grow, "允许镜像超过原始大小");
+            ui.checkbox(&mut self.repack.allow_grow, tr!("allow-image-growth"));
         });
         ui.add_space(8.0);
         let ready = !app.job_running()
@@ -295,7 +304,13 @@ impl ErofsPage {
             && !self.repack.output.trim().is_empty()
             && self.repack.manifest.is_some();
         let output = self.repack.output.trim().to_owned();
-        if run_button(ui, "重新打包", ready, Some("需要先选择有效的工作区")).clicked()
+        if run_button(
+            ui,
+            &tr!("repack"),
+            ready,
+            Some(&tr!("valid-workspace-required")),
+        )
+        .clicked()
         {
             self.pending = Some(PendingOp::Repack {
                 output: output.clone(),
@@ -317,7 +332,7 @@ impl ErofsPage {
         ui.add_space(6.0);
         if result.ok {
             message_box(ui, egui::Color32::from_rgb(90, 200, 120), &result.summary);
-            if !result.output.is_empty() && ui.button("打开输出位置").clicked() {
+            if !result.output.is_empty() && ui.button(tr!("open-output-location")).clicked() {
                 open_in_file_manager(std::path::Path::new(&result.output));
             }
         } else {

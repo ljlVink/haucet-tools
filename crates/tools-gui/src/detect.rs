@@ -29,21 +29,21 @@ pub enum FileKind {
 }
 
 impl FileKind {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Unknown => "未知格式",
-            Self::ZipPackage => "ZIP 更新包",
-            Self::Erofs => "EROFS 分区镜像",
-            Self::HarmonyFrame => "HARMONY! 镜像",
-            Self::Rvt => "RVT 密钥镜像",
-            Self::Gpt => "GPT 分区表镜像",
-            Self::SecImage => "Huawei 安全镜像",
-            Self::HvbWrapped => "HVB 分区镜像",
-            Self::Nve => "Hisi-NV-Partition",
-            Self::OemInfo => "Huawei OEMINFO 镜像",
-            Self::Cpio => "cpio 归档",
-            Self::ErofsWorkspace => "EROFS 工作区",
-            Self::RamdiskWorkspace => "Ramdisk 工作区",
+            Self::Unknown => tr!("format-unknown"),
+            Self::ZipPackage => tr!("format-zip-update"),
+            Self::Erofs => tr!("format-erofs-image"),
+            Self::HarmonyFrame => tr!("format-harmony-image"),
+            Self::Rvt => tr!("format-rvt-image"),
+            Self::Gpt => tr!("format-gpt-image"),
+            Self::SecImage => tr!("format-sec-image"),
+            Self::HvbWrapped => tr!("format-hvb-image"),
+            Self::Nve => "Hisi-NV-Partition".to_owned(),
+            Self::OemInfo => tr!("format-oeminfo-image"),
+            Self::Cpio => tr!("format-cpio-archive"),
+            Self::ErofsWorkspace => tr!("format-erofs-workspace"),
+            Self::RamdiskWorkspace => tr!("format-ramdisk-workspace"),
         }
     }
 }
@@ -73,7 +73,7 @@ fn detect_dir(path: &Path) -> (FileKind, String) {
     let mut has_cpio = false;
     let mut is_erofs_workspace = false;
     let Ok(entries) = std::fs::read_dir(path) else {
-        return (FileKind::Unknown, "无法读取目录".to_owned());
+        return (FileKind::Unknown, tr!("detect-directory-read-error"));
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -85,34 +85,25 @@ fn detect_dir(path: &Path) -> (FileKind, String) {
         }
     }
     if is_erofs_workspace {
-        (
-            FileKind::ErofsWorkspace,
-            "这是 EROFS 解包工作区, 可以直接重新打包".to_owned(),
-        )
+        (FileKind::ErofsWorkspace, tr!("detect-erofs-workspace"))
     } else if has_cpio {
-        (
-            FileKind::RamdiskWorkspace,
-            "这是 ramdisk 解包工作区, 可以直接重新打包镜像".to_owned(),
-        )
+        (FileKind::RamdiskWorkspace, tr!("detect-ramdisk-workspace"))
     } else {
-        (
-            FileKind::Unknown,
-            "目录中没有识别到 haucet 工作区".to_owned(),
-        )
+        (FileKind::Unknown, tr!("detect-no-workspace"))
     }
 }
 
 //todo use local funcs, rather than judge itself.
 fn detect_file(path: &Path) -> (FileKind, String) {
     let Ok(mut file) = File::open(path) else {
-        return (FileKind::Unknown, "无法打开文件".to_owned());
+        return (FileKind::Unknown, tr!("detect-file-open-error"));
     };
     let Ok(metadata) = file.metadata() else {
-        return (FileKind::Unknown, "无法读取文件信息".to_owned());
+        return (FileKind::Unknown, tr!("detect-metadata-error"));
     };
     let length = metadata.len();
     if length < 8 {
-        return (FileKind::Unknown, "文件太小, 无法识别".to_owned());
+        return (FileKind::Unknown, tr!("detect-file-too-small"));
     }
 
     let mut head = [0_u8; 180];
@@ -127,10 +118,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
                 == nve_magic.len()
                 && nve_magic == NVE_HEADER_MAGIC
             {
-                return (
-                    FileKind::Nve,
-                    "Hisi-NV-Partition NVE 镜像, 可打开 NVE 编辑器".to_owned(),
-                );
+                return (FileKind::Nve, tr!("detect-nve"));
             }
             block_offset += NVE_BLOCK_SIZE as u64;
         }
@@ -138,7 +126,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
 
     // ZIP package
     if head_len >= 4 && &head[0..4] == b"PK\x03\x04" {
-        return (FileKind::ZipPackage, "ZIP 压缩包".to_owned());
+        return (FileKind::ZipPackage, tr!("detect-zip"));
     }
 
     // update.bin: TLV type 0x01 (L2) or 0x11 (L1) + sane component table size
@@ -152,30 +140,24 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         {
             return (
                 FileKind::ZipPackage,
-                format!(
-                    "update.bin 组件包({} 个分区), 可以查看和解包分区",
-                    compinfo_len / 71
-                ),
+                tr!("detect-update-bin", "count" => compinfo_len / 71),
             );
         }
     }
 
     // cpio archive
     if head_len >= 6 && (&head[0..6] == b"070701" || &head[0..6] == b"070702") {
-        return (FileKind::Cpio, "cpio 归档, 可浏览和编辑内容".to_owned());
+        return (FileKind::Cpio, tr!("detect-cpio"));
     }
 
     // HARMONY! frame
     if head_len >= 8 && &head[0..8] == HARMONY_MAGIC {
-        return (
-            FileKind::HarmonyFrame,
-            "HARMONY! 包装的镜像, 可进行 ramdisk 操作".to_owned(),
-        );
+        return (FileKind::HarmonyFrame, tr!("detect-harmony"));
     }
 
     // RVT
     if head_len >= 4 && &head[0..4] == RVT_MAGIC {
-        return (FileKind::Rvt, "RVT 密钥镜像, 包含分区公钥描述符".to_owned());
+        return (FileKind::Rvt, tr!("detect-rvt"));
     }
 
     // GPT header is at LBA 1 (offset 512) for a standard 512-byte logical block.
@@ -184,14 +166,11 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         && read_at(&mut file, &mut gpt_magic, 512).unwrap_or(0) == GPT_MAGIC.len()
         && &gpt_magic == GPT_MAGIC
     {
-        return (FileKind::Gpt, "GPT 分区表镜像".to_owned());
+        return (FileKind::Gpt, tr!("detect-gpt"));
     }
 
     if common::formats::secimg::probe_image(path).unwrap_or(false) {
-        return (
-            FileKind::SecImage,
-            "Huawei X.509 证书链安全镜像，可查看组件、目标分区和载荷校验信息".to_owned(),
-        );
+        return (FileKind::SecImage, tr!("detect-sec-image"));
     }
 
     // EROFS magic at offset 1024
@@ -200,10 +179,7 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         && read_at(&mut file, &mut erofs_magic, 1024).unwrap_or(0) == 4
         && &erofs_magic == EROFS_MAGIC
     {
-        return (
-            FileKind::Erofs,
-            "EROFS 分区镜像, 可解包或查看分区信息".to_owned(),
-        );
+        return (FileKind::Erofs, tr!("detect-erofs"));
     }
 
     // HVB footer at the tail
@@ -213,25 +189,16 @@ fn detect_file(path: &Path) -> (FileKind, String) {
             == HVB_FOOTER_SIZE
         && &footer[0..8] == HVB_FOOTER_MAGIC
     {
-        return (
-            FileKind::HvbWrapped,
-            "HVB 尾部包装的分区镜像, 可查看分区信息".to_owned(),
-        );
+        return (FileKind::HvbWrapped, tr!("detect-hvb"));
     }
 
     // OEMINFO has no fixed image-level header, so only probe for embedded block headers
     // after formats with stronger signatures have been ruled out.
     if common::oeminfo::probe_file(path).unwrap_or(false) {
-        return (
-            FileKind::OemInfo,
-            "Huawei OEMINFO 镜像, 可浏览数据块与 A/B 副本".to_owned(),
-        );
+        return (FileKind::OemInfo, tr!("detect-oeminfo"));
     }
 
-    (
-        FileKind::Unknown,
-        "没有识别出已知格式; 可以尝试\"查看分区信息\"或直接解包".to_owned(),
-    )
+    (FileKind::Unknown, tr!("detect-unknown"))
 }
 
 fn read_at(file: &mut File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {

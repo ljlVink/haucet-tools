@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[macro_use]
+mod i18n;
+
 mod app;
 mod detect;
 mod fonts;
@@ -14,6 +17,7 @@ use eframe::egui;
 use std::sync::Arc;
 
 fn main() -> eframe::Result<()> {
+    i18n::init_from_env();
     if worker::is_worker_mode() {
         std::process::exit(worker::run_worker());
     }
@@ -23,7 +27,7 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1180.0, 800.0])
         .with_min_inner_size([980.0, 640.0])
-        .with_title("Haucet Tools - 空闲")
+        .with_title(tr!("app-title-idle"))
         .with_decorations(true);
     if let Some(icon) = icon {
         viewport = viewport.with_icon(Arc::new(icon));

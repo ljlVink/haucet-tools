@@ -1,3 +1,4 @@
+use crate::i18n::{self, Language};
 use crate::job::{self, JobEvent, JobResult, RunningJob};
 use crate::pages::images::ImageKind;
 use crate::pages::{self, Page};
@@ -5,6 +6,10 @@ use crate::settings::Settings;
 use crate::worker::JobOp;
 use eframe::egui;
 use std::path::PathBuf;
+
+const LICENSE_SPDX: &str = env!("CARGO_PKG_LICENSE");
+const REPOSITORY_URL: &str = "https://github.com/ljlVink/haucet-tools";
+
 pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
@@ -71,6 +76,8 @@ impl HaucetApp {
                     .load_texture("haucet-logo", image, egui::TextureOptions::LINEAR),
             )
         });
+        let settings = Settings::load();
+        i18n::set_language(settings.language);
         Self {
             current: Page::Home,
             home: pages::home::HomePage::default(),
@@ -84,7 +91,7 @@ impl HaucetApp {
             job: None,
             job_owner: ResultOwner::Page(Page::Home),
             logs: Vec::new(),
-            settings: Settings::load(),
+            settings,
             font_loaded,
             logo,
             results: ResultStore::default(),
@@ -114,10 +121,8 @@ impl eframe::App for HaucetApp {
                         .inner_margin(egui::Margin::same(10))
                         .show(ui, |ui| {
                             ui.label(
-                                egui::RichText::new(
-                                    "未找到中文字体, 界面文字可能无法显示。\n请安装 Noto Sans CJK / 微软雅黑 等字体后重启。",
-                                )
-                                .color(egui::Color32::from_rgb(255, 220, 160)),
+                                egui::RichText::new(tr!("font-warning"))
+                                    .color(egui::Color32::from_rgb(255, 220, 160)),
                             );
                         });
                 });
@@ -148,11 +153,11 @@ impl HaucetApp {
                 JobEvent::Done(result) => {
                     let owner = self.job_owner;
                     let mark = if result.cancelled {
-                        "[已取消]"
+                        tr!("job-status-cancelled")
                     } else if result.ok {
-                        "[成功]"
+                        tr!("job-status-success")
                     } else {
-                        "[失败]"
+                        tr!("job-status-failed")
                     };
                     self.push_log(format!("{mark} {}", result.summary));
                     self.results.insert(owner, result);
@@ -179,19 +184,21 @@ impl HaucetApp {
             Ok(running) => {
                 let label = job_label(&running.op);
                 self.job_owner = owner;
-                self.push_log(format!("── 开始任务: {label}"));
+                self.push_log(tr!("job-start", "task" => label));
                 self.job = Some(running);
                 self.results.remove(owner);
                 true
             }
             Err(error) => {
-                self.push_log(format!("[错误] 无法启动任务: {error:#}"));
+                let error = format!("{error:#}");
+                let message = tr!("job-start-error", "error" => error.clone());
+                self.push_log(tr!("job-error-prefix", "message" => message.clone()));
                 self.results.insert(
                     owner,
                     JobResult {
                         ok: false,
                         cancelled: false,
-                        summary: format!("无法启动任务: {error:#}"),
+                        summary: message,
                         payload: None,
                     },
                 );
@@ -290,7 +297,7 @@ impl HaucetApp {
             self.nav(Page::Home);
         }
 
-        nav_group_label(ui, "文件与镜像");
+        nav_group_label(ui, &tr!("nav-files-images"));
         for page in [
             Page::Package,
             Page::Images,
@@ -303,7 +310,7 @@ impl HaucetApp {
             }
         }
 
-        nav_group_label(ui, "设备与刷写");
+        nav_group_label(ui, &tr!("nav-devices-flashing"));
         for page in [Page::Fastboot, Page::Vcom] {
             if nav_button(ui, self.current, page) {
                 self.nav(page);
@@ -315,45 +322,62 @@ impl HaucetApp {
         ui.horizontal(|ui| {
             ui.add_space(10.0);
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new(common::version::ABOUT_HEADING).weak());
+                ui.label(egui::RichText::new(tr!("about-heading")).weak());
                 ui.label(
-                    egui::RichText::new(common::version::ABOUT)
+                    egui::RichText::new(tr!("about-description"))
                         .weak()
                         .size(11.0),
                 );
                 ui.label(
-                    egui::RichText::new(format!("版本 {}", common::version::VERSION))
-                        .weak()
-                        .size(11.0),
+                    egui::RichText::new(
+                        tr!("about-version", "version" => common::version::VERSION),
+                    )
+                    .weak()
+                    .size(11.0),
                 );
-                ui.label(
-                    egui::RichText::new(common::version::LICENSE_SPDX)
-                        .weak()
-                        .size(11.0),
-                );
+                ui.label(egui::RichText::new(LICENSE_SPDX).weak().size(11.0));
                 ui.hyperlink_to(
-                    egui::RichText::new(common::version::REPOSITORY_LABEL)
+                    egui::RichText::new(tr!("repository-label"))
                         .weak()
                         .size(11.0),
-                    common::version::REPOSITORY_URL,
+                    REPOSITORY_URL,
                 );
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(tr!("language-label")).weak().size(11.0));
+                let previous = self.settings.language;
+                egui::ComboBox::from_id_salt("language-select")
+                    .selected_text(self.settings.language.native_name())
+                    .width(120.0)
+                    .show_ui(ui, |ui| {
+                        for language in Language::ALL {
+                            ui.selectable_value(
+                                &mut self.settings.language,
+                                language,
+                                language.native_name(),
+                            );
+                        }
+                    });
+                if self.settings.language != previous {
+                    i18n::set_language(self.settings.language);
+                    self.settings.save();
+                }
             });
         });
     }
 
     fn log_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            if ui.button("清空").clicked() {
+            if ui.button(tr!("log-clear")).clicked() {
                 self.logs.clear();
             }
-            if ui.button("复制").clicked() {
+            if ui.button(tr!("log-copy")).clicked() {
                 let text = self.logs.join("\n");
                 ui.ctx().copy_text(text);
             }
             if let Some(job) = &self.job {
                 ui.label(egui::RichText::new(job_label(&job.op)).weak());
             }
-            if self.job.is_some() && ui.button("取消任务").clicked() {
+            if self.job.is_some() && ui.button(tr!("job-cancel")).clicked() {
                 self.cancel_job();
             }
         });
@@ -387,7 +411,7 @@ impl HaucetApp {
             .show_separator_line(true)
             .show(ctx, |ui| {
                 apply_content_text_style(ui);
-                pages::page_header(ui, title, description, busy);
+                pages::page_header(ui, &title, &description, busy);
             });
     }
 
@@ -443,8 +467,8 @@ impl HaucetApp {
 
 fn format_window_title(elapsed: Option<std::time::Duration>) -> String {
     match elapsed {
-        Some(elapsed) => format!("Haucet Tools - 运行中 {}s", elapsed.as_secs()),
-        None => "Haucet Tools - 空闲".to_owned(),
+        Some(elapsed) => tr!("app-title-running", "seconds" => elapsed.as_secs()),
+        None => tr!("app-title-idle"),
     }
 }
 
@@ -476,27 +500,27 @@ fn apply_content_text_style(ui: &mut egui::Ui) {
     text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(13.0));
 }
 
-fn job_label(op: &JobOp) -> &'static str {
+fn job_label(op: &JobOp) -> String {
     use crate::worker::JobOp::*;
     match op {
-        NvmeInspect { .. } => "Read NVMe / NVE",
-        NvmeEdit { .. } => "Edit NVMe / NVE",
-        OemInfoInspect { .. } => "读取 OEMINFO",
-        OemInfoExportImage { .. } => "导出 OEMINFO 图片",
-        PackageInspect { .. } => "读取更新包内容",
-        PackageUnpack { .. } => "解包更新包",
-        ErofsUnpack { .. } => "解包 EROFS 镜像",
-        ErofsRepack { .. } => "重新打包 EROFS 镜像",
-        RamdiskUnpack { .. } => "解包 ramdisk",
-        RamdiskRepack { .. } => "重新打包 ramdisk",
-        RamdiskPatch { .. } => "给 ramdisk 打补丁",
-        RamdiskProbe { .. } => "检查 ramdisk 镜像",
-        PartitionInfo { .. } => "读取分区信息",
-        FastbootStatus { .. } => "检测 fastboot 设备",
-        FastbootReboot { .. } => "重启 fastboot 设备",
-        FastbootFlash { .. } => "刷写 fastboot 镜像",
-        VcomStatus { .. } => "检测 VCOM 设备",
-        VcomFlash { .. } => "刷写 VCOM loader",
+        NvmeInspect { .. } => tr!("job-nvme-inspect"),
+        NvmeEdit { .. } => tr!("job-nvme-edit"),
+        OemInfoInspect { .. } => tr!("job-oeminfo-inspect"),
+        OemInfoExportImage { .. } => tr!("job-oeminfo-export"),
+        PackageInspect { .. } => tr!("job-package-inspect"),
+        PackageUnpack { .. } => tr!("job-package-unpack"),
+        ErofsUnpack { .. } => tr!("job-erofs-unpack"),
+        ErofsRepack { .. } => tr!("job-erofs-repack"),
+        RamdiskUnpack { .. } => tr!("job-ramdisk-unpack"),
+        RamdiskRepack { .. } => tr!("job-ramdisk-repack"),
+        RamdiskPatch { .. } => tr!("job-ramdisk-patch"),
+        RamdiskProbe { .. } => tr!("job-ramdisk-probe"),
+        PartitionInfo { .. } => tr!("job-partition-info"),
+        FastbootStatus { .. } => tr!("job-fastboot-status"),
+        FastbootReboot { .. } => tr!("job-fastboot-reboot"),
+        FastbootFlash { .. } => tr!("job-fastboot-flash"),
+        VcomStatus { .. } => tr!("job-vcom-status"),
+        VcomFlash { .. } => tr!("job-vcom-flash"),
     }
 }
 

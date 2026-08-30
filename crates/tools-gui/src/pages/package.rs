@@ -61,9 +61,9 @@ impl PackagePage {
                 let input_response = path_row(
                     ui,
                     app,
-                    "更新文件",
+                    &tr!("update-file"),
                     &mut self.input,
-                    "选择文件",
+                    &tr!("choose-file"),
                     Some(&["zip", "bin"]),
                 );
                 if input_response.changed {
@@ -77,7 +77,14 @@ impl PackagePage {
                 }
                 ui.add_space(6.0);
 
-                path_row(ui, app, "输出目录", &mut self.output, "选择目录", None);
+                path_row(
+                    ui,
+                    app,
+                    &tr!("output-directory"),
+                    &mut self.output,
+                    &tr!("choose-directory"),
+                    None,
+                );
 
                 let drops = app.take_drops(ui.ctx());
                 if let Some(path) = drops.first() {
@@ -93,7 +100,7 @@ impl PackagePage {
                     let ready = !app.job_running()
                         && !self.input.trim().is_empty()
                         && !self.output.trim().is_empty();
-                    if run_button(ui, "开始解包", ready, None).clicked() {
+                    if run_button(ui, &tr!("start-unpack"), ready, None).clicked() {
                         let partitions = self.selected_partitions();
                         let output = self.output.trim().to_owned();
                         self.pending = Some(PendingOp::Unpack {
@@ -111,20 +118,20 @@ impl PackagePage {
                         });
                     }
                     if app.job_running() {
-                        ui.label(egui::RichText::new("任务进行中").weak());
+                        ui.label(egui::RichText::new(tr!("task-running")).weak());
                     }
                 });
 
                 ui.add_space(4.0);
                 let layout_before = self.layout;
-                egui::CollapsingHeader::new("高级选项")
+                egui::CollapsingHeader::new(tr!("advanced-options"))
                     .id_salt("package-advanced")
                     .show(ui, |ui| {
                         egui::Grid::new("package-advanced-grid")
                             .num_columns(2)
                             .spacing([16.0, 8.0])
                             .show(ui, |ui| {
-                                ui.label("update.bin 布局");
+                                ui.label(tr!("update-bin-layout"));
                                 egui::ComboBox::from_id_salt("package-layout")
                                     .selected_text(layout_label(self.layout))
                                     .show_ui(ui, |ui| {
@@ -139,19 +146,17 @@ impl PackagePage {
                                         }
                                     });
                                 ui.end_row();
-                                ui.label("自定义分区");
+                                ui.label(tr!("custom-partitions"));
                                 ui.add(
                                     egui::TextEdit::singleline(&mut self.custom_partitions)
-                                        .hint_text(
-                                            "可选: 逗号分隔, 如 system, vendor; 留空则使用下方勾选",
-                                        )
+                                        .hint_text(tr!("custom-partitions-hint"))
                                         .desired_width(380.0),
                                 );
                                 ui.end_row();
-                                ui.label("选项");
+                                ui.label(tr!("options"));
                                 ui.horizontal(|ui| {
-                                    ui.checkbox(&mut self.force, "覆盖已存在的输出");
-                                    ui.checkbox(&mut self.all_erofs, "只解包 EROFS 分区");
+                                    ui.checkbox(&mut self.force, tr!("overwrite-existing-output"));
+                                    ui.checkbox(&mut self.all_erofs, tr!("only-erofs-partitions"));
                                 });
                                 ui.end_row();
                             });
@@ -237,7 +242,7 @@ impl PackagePage {
                 {
                     Some(index) => index,
                     None => {
-                        let summary = "无法解析更新包组件索引".to_owned();
+                        let summary = tr!("package-index-invalid");
                         self.inspect_message = Some(summary.clone());
                         self.result = Some(ResultView {
                             ok: false,
@@ -257,10 +262,10 @@ impl PackagePage {
                     .iter()
                     .map(|component| component.component_type == 0)
                     .collect();
-                self.inspect_message = Some(format!(
-                    "包内共 {} 个组件, {} 个分区镜像",
-                    index.components.len(),
-                    image_count
+                self.inspect_message = Some(tr!(
+                    "package-component-count",
+                    "components" => index.components.len(),
+                    "images" => image_count,
                 ));
                 self.index = Some(index);
             }
@@ -297,14 +302,14 @@ impl PackagePage {
     }
 
     fn partition_table(&mut self, ui: &mut egui::Ui, index: &PackageIndex) {
-        section(ui, "包内分区");
+        section(ui, &tr!("package-partitions"));
         ui.horizontal(|ui| {
-            if ui.button("全选").clicked() {
+            if ui.button(tr!("select-all")).clicked() {
                 for checked in &mut self.checked {
                     *checked = true;
                 }
             }
-            if ui.button("全不选").clicked() {
+            if ui.button(tr!("select-none")).clicked() {
                 for checked in &mut self.checked {
                     *checked = false;
                 }
@@ -322,19 +327,19 @@ impl PackagePage {
             .column(Column::remainder().at_least(120.0))
             .header(24.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("解包");
+                    ui.strong(tr!("unpack"));
                 });
                 header.col(|ui| {
-                    ui.strong("分区");
+                    ui.strong(tr!("partition"));
                 });
                 header.col(|ui| {
-                    ui.strong("类型");
+                    ui.strong(tr!("type"));
                 });
                 header.col(|ui| {
-                    ui.strong("大小");
+                    ui.strong(tr!("size"));
                 });
                 header.col(|ui| {
-                    ui.strong("数据偏移");
+                    ui.strong(tr!("data-offset"));
                 });
             })
             .body(|mut body| {
@@ -377,7 +382,7 @@ impl PackagePage {
         ui.add_space(6.0);
         if result.ok {
             message_box(ui, egui::Color32::from_rgb(90, 200, 120), &result.summary);
-            if !result.output.is_empty() && ui.button("打开输出目录").clicked() {
+            if !result.output.is_empty() && ui.button(tr!("open-output-directory")).clicked() {
                 open_in_file_manager(std::path::Path::new(&result.output));
             }
         } else {
@@ -386,11 +391,11 @@ impl PackagePage {
     }
 }
 
-fn layout_label(layout: UpdateLayout) -> &'static str {
+fn layout_label(layout: UpdateLayout) -> String {
     match layout {
-        UpdateLayout::Auto => "自动检测",
-        UpdateLayout::L1 => "L1",
-        UpdateLayout::L2 => "L2",
+        UpdateLayout::Auto => tr!("auto-detect"),
+        UpdateLayout::L1 => "L1".to_owned(),
+        UpdateLayout::L2 => "L2".to_owned(),
     }
 }
 
@@ -413,14 +418,15 @@ fn path_row(
         ui.label(egui::RichText::new(label).strong());
         let response = ui.add(
             egui::TextEdit::singleline(value)
-                .hint_text("路径或拖放文件到这里")
+                .hint_text(tr!("path-or-drop-hint"))
                 .desired_width(ui.available_width() - 150.0),
         );
         result.changed |= response.changed();
         result.committed |= response.lost_focus();
         if ui.button(button).clicked() {
+            let filter_name = tr!("filter-update-package");
             let filters: &[(&str, &[&str])] = match filter {
-                Some(extensions) => &[("更新包", extensions)],
+                Some(extensions) => &[(filter_name.as_str(), extensions)],
                 None => &[],
             };
             let picked = if filter.is_some() {
@@ -440,8 +446,8 @@ fn path_row(
 
 fn component_type_label(component_type: u8) -> String {
     match component_type {
-        0 => "镜像".to_owned(),
-        1 => "压缩包".to_owned(),
-        other => format!("类型 {other}"),
+        0 => tr!("image"),
+        1 => tr!("archive"),
+        other => tr!("type-number", "number" => other),
     }
 }

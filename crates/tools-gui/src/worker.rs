@@ -113,9 +113,9 @@ pub fn run_worker() -> i32 {
     let read = std::io::stdin().read_to_string(&mut input);
     let result = match read {
         Ok(_) => serde_json::from_str::<JobSpec>(&input)
-            .context("worker: invalid job spec on stdin")
+            .context(tr!("worker-invalid-spec"))
             .and_then(|spec| execute(&spec.op)),
-        Err(e) => Err(e).context("worker: reading job spec from stdin"),
+        Err(e) => Err(e).context(tr!("worker-read-spec-error")),
     };
     let result = match result {
         Ok(result) => result,
@@ -143,11 +143,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         JobOp::PackageInspect { input, layout } => {
             let index = package::inspect(Path::new(input), *layout)?;
             summary_payload(
-                format!(
-                    "包内共 {} 个组件(检测到 {} 布局)",
-                    index.components.len(),
-                    layout_label(index.layout)
-                ),
+                tr!("worker-package-inspected", "count" => index.components.len(), "layout" => layout_label(index.layout)),
                 index,
             )
         }
@@ -172,7 +168,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             )?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("更新包已解包到 {}", output),
+                summary: tr!("worker-package-unpacked", "output" => output.clone()),
                 payload: None,
             })
         }
@@ -186,7 +182,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             erofs::unpack_with_tools(Path::new(image), Path::new(output), &tools, *force)?;
             let manifest = erofs::read_manifest(Path::new(output))?;
             summary_payload(
-                format!("EROFS 镜像已解包到 {}(分区 {})", output, manifest.partition),
+                tr!("worker-erofs-unpacked", "output" => output.clone(), "partition" => manifest.partition.clone()),
                 manifest,
             )
         }
@@ -200,7 +196,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             erofs::repack_with_tools(Path::new(workspace), Path::new(output), &tools, *allow_grow)?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("已重新打包 EROFS 镜像到 {output}"),
+                summary: tr!("worker-erofs-repacked", "output" => output.clone()),
                 payload: None,
             })
         }
@@ -212,14 +208,14 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             let image = fs_util::canonical_path(Path::new(image))?;
             fs_util::prepare_dir_excluding(
                 Path::new(output),
-                "output directory",
+                &tr!("output-directory"),
                 *force,
                 &[&image],
             )?;
             ramdisk::unpack(&image, Path::new(output))?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("Ramdisk 已解包到 {}", output),
+                summary: tr!("worker-ramdisk-unpacked", "output" => output.clone()),
                 payload: None,
             })
         }
@@ -234,7 +230,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             ramdisk::repack(&workspace, &original, &output)?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("Ramdisk 镜像已生成到 {}", output.display()),
+                summary: tr!("worker-ramdisk-repacked", "output" => output.display().to_string()),
                 payload: None,
             })
         }
@@ -247,7 +243,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             ramdisk::patch(Path::new(image), Path::new(binary), &output)?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("补丁已写入 {}", output.display()),
+                summary: tr!("worker-patch-written", "output" => output.display().to_string()),
                 payload: None,
             })
         }
@@ -257,9 +253,9 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
                 payload["patched"].as_bool().unwrap_or(false),
                 payload["layout_known"].as_bool().unwrap_or(false),
             ) {
-                (true, _) => "该镜像已打过补丁(存在 .backup/init_early)".to_owned(),
-                (false, true) => "原厂镜像, 可以打补丁".to_owned(),
-                _ => "未识别的 ramdisk 布局".to_owned(),
+                (true, _) => tr!("worker-image-patched"),
+                (false, true) => tr!("stock-image-patchable"),
+                _ => tr!("worker-ramdisk-layout-unknown"),
             };
             Ok(WorkerResult {
                 ok: true,
@@ -272,33 +268,30 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             let partition_summary = partition::summarize(Path::new(image)).ok();
             let label = match &partition_summary {
                 Some(partition::PartitionSummary::Harmony(h)) => {
-                    format!("HARMONY! 分区镜像({})", h.cert.partition_name)
+                    tr!("worker-harmony-partition", "partition" => h.cert.partition_name.clone())
                 }
                 Some(partition::PartitionSummary::Rvt(info)) => {
-                    format!("RVT 密钥镜像({} 个描述符)", info.descriptors.len())
+                    tr!("worker-rvt-image", "count" => info.descriptors.len())
                 }
                 Some(partition::PartitionSummary::Gpt(info)) => {
-                    format!(
-                        "GPT 分区表({} 个表，{} 个分区)",
-                        info.tables.len(),
-                        info.partition_count()
-                    )
+                    tr!("worker-gpt-image", "tables" => info.tables.len(), "partitions" => info.partition_count())
                 }
-                Some(partition::PartitionSummary::SecImage(info)) => format!(
-                    "Huawei 安全镜像({} -> {})",
-                    info.image_name, info.partition_name
+                Some(partition::PartitionSummary::SecImage(info)) => tr!(
+                    "worker-sec-image",
+                    "image" => info.image_name.clone(),
+                    "partition" => info.partition_name.clone(),
                 ),
                 Some(partition::PartitionSummary::HvbWrapped { .. }) => {
-                    "HVB 包装的分区镜像".to_owned()
+                    tr!("hvb-wrapped-partition-image")
                 }
-                None => "未识别分区格式".to_owned(),
+                None => tr!("worker-partition-unknown"),
             };
             summary_payload(
-                format!(
-                    "{}; 信息熵 {:.6} bits/byte ({:.2}%)",
-                    label,
-                    entropy_summary.entropy_bits_per_byte,
-                    entropy_summary.normalized_percent()
+                tr!(
+                    "worker-partition-entropy",
+                    "label" => label,
+                    "entropy" => format!("{:.6}", entropy_summary.entropy_bits_per_byte),
+                    "percent" => format!("{:.2}", entropy_summary.normalized_percent()),
                 ),
                 serde_json::json!({
                     "partition": partition_summary,
@@ -309,25 +302,19 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         JobOp::NvmeInspect { image } => {
             let summary = nvme::inspect(Path::new(image))?;
             let crc_status = if summary.crc_supported {
-                format!("CRC 错误 {} 个", summary.crc_invalid)
+                tr!("worker-crc-errors", "count" => summary.crc_invalid)
             } else {
-                "CRC 未启用".to_owned()
+                tr!("worker-crc-disabled")
             };
             summary_payload(
-                format!(
-                    "NVE/NVME: {} 个活动副本, {} 个条目, {}",
-                    summary.active_blocks, summary.valid_items, crc_status
-                ),
+                tr!("worker-nve-summary", "copies" => summary.active_blocks, "entries" => summary.valid_items, "crc" => crc_status),
                 summary,
             )
         }
         JobOp::OemInfoInspect { image } => {
             let summary = oeminfo::inspect(Path::new(image))?;
             summary_payload(
-                format!(
-                    "OEMINFO: {} 个数据块（活动 {}，非活动 {}）",
-                    summary.total_blocks, summary.active_blocks, summary.inactive_blocks
-                ),
+                tr!("worker-oeminfo-summary", "total" => summary.total_blocks, "active" => summary.active_blocks, "inactive" => summary.inactive_blocks),
                 summary,
             )
         }
@@ -339,7 +326,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             oeminfo::export_embedded_image(Path::new(image), block, Path::new(output))?;
             Ok(WorkerResult {
                 ok: true,
-                summary: format!("OEMINFO 图片已导出到 {output}"),
+                summary: tr!("worker-oeminfo-exported", "output" => output.clone()),
                 payload: None,
             })
         }
@@ -351,13 +338,13 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         } => {
             let result = nvme::edit_file_in_place(Path::new(image), key, value, value_format)?;
             summary_payload(
-                format!(
-                    "已从 NVE 副本 {} 向副本 {} 提交 {} 个条目（代次 {}），备份已创建: {}",
-                    result.source_block,
-                    result.committed_block,
-                    result.updated_items,
-                    result.age,
-                    result.backup_path
+                tr!(
+                    "worker-nve-edited",
+                    "source" => result.source_block,
+                    "target" => result.committed_block,
+                    "count" => result.updated_items,
+                    "generation" => result.age,
+                    "backup" => result.backup_path.clone(),
                 ),
                 result,
             )
@@ -365,7 +352,7 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
         JobOp::FastbootStatus {} => fastboot_status(),
         JobOp::FastbootReboot {} => fastboot_reboot(),
         JobOp::FastbootFlash { image, target } => {
-            ensure!(!target.trim().is_empty(), "分区名不能为空");
+            ensure!(!target.trim().is_empty(), "{}", tr!("partition-name-empty"));
             fastboot_flash(Path::new(image), target.trim())
         }
         JobOp::VcomStatus {} => vcom_status(),
@@ -397,7 +384,7 @@ fn vcom_status() -> Result<WorkerResult> {
 
     Ok(WorkerResult {
         ok: true,
-        summary: format!("VCOM serial ports: {serial_count}, USB candidates: {usb_count}"),
+        summary: tr!("worker-vcom-status", "ports" => serial_count, "usb" => usb_count),
         payload: Some(serde_json::json!({
             "ports": ports,
             "usb": usb,
@@ -406,23 +393,26 @@ fn vcom_status() -> Result<WorkerResult> {
 }
 
 fn vcom_flash(port: &str, address: u32, file: &Path) -> Result<WorkerResult> {
-    ensure!(!port.is_empty(), "VCOM port cannot be empty");
-    let data = fs::read(file).with_context(|| format!("reading {}", file.display()))?;
+    ensure!(!port.is_empty(), "{}", tr!("vcom-port-empty"));
+    let data = fs::read(file)
+        .with_context(|| tr!("reading-file", "file" => file.display().to_string()))?;
     let mut device = SerialVcomDevice::open(port, 115200)
-        .with_context(|| format!("opening VCOM port {port}"))?;
+        .with_context(|| tr!("opening-vcom-port", "port" => port.to_owned()))?;
     let mut log = |message: &str| emit_log(message);
 
     vcom::upload(&mut device, &data, address, &mut log, &mut |sent, total| {
         if total > 0 && (sent == total || sent % (total / 10 + 1) == 0) {
-            emit_log(&format!("Progress: {sent}/{total} bytes"));
+            emit_log(&tr!("progress-bytes", "sent" => sent, "total" => total));
         }
     })?;
 
     Ok(WorkerResult {
         ok: true,
-        summary: format!(
-            "VCOM flash finished: {} -> {port} at 0x{address:08X}",
-            file.display()
+        summary: tr!(
+            "worker-vcom-finished",
+            "file" => file.display().to_string(),
+            "port" => port.to_owned(),
+            "address" => format!("0x{address:08X}"),
         ),
         payload: Some(serde_json::json!({
             "port": port,
@@ -436,7 +426,7 @@ fn fastboot_runtime() -> Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .context("创建 fastboot 异步运行时失败")
+        .context(tr!("fastboot-runtime-error"))
 }
 
 fn emit_log(text: &str) {
@@ -451,7 +441,7 @@ fn fastboot_status() -> Result<WorkerResult> {
         use hm_fastboot::nusb::{DeviceSelectionError, NusbFastBoot, require_single_device};
         let devices: Vec<_> = hm_fastboot::nusb::devices()
             .await
-            .context("枚举 USB 设备失败")?
+            .context(tr!("enumerate-usb-error"))?
             .collect();
         let list: Vec<_> = devices.iter().map(device_json).collect();
         let info = match require_single_device(devices.into_iter()) {
@@ -459,7 +449,7 @@ fn fastboot_status() -> Result<WorkerResult> {
             Err(DeviceSelectionError::NotFound) => {
                 return Ok(WorkerResult {
                     ok: true,
-                    summary: "未检测到 fastboot 设备".to_owned(),
+                    summary: tr!("fastboot-not-found"),
                     payload: Some(serde_json::json!({
                         "connected": false,
                         "devices": list,
@@ -469,7 +459,7 @@ fn fastboot_status() -> Result<WorkerResult> {
             Err(DeviceSelectionError::Multiple) => {
                 return Ok(WorkerResult {
                     ok: true,
-                    summary: "检测到多个 fastboot 设备，已拒绝选择目标".to_owned(),
+                    summary: tr!("worker-fastboot-multiple-rejected"),
                     payload: Some(serde_json::json!({
                         "connected": false,
                         "devices": list,
@@ -486,13 +476,13 @@ fn fastboot_status() -> Result<WorkerResult> {
                         Ok(value) => {
                             vars.insert(var.to_owned(), serde_json::Value::String(value));
                         }
-                        Err(error) => emit_log(&format!("getvar:{var} 失败: {error}")),
+                        Err(error) => emit_log(&tr!("fastboot-getvar-error", "variable" => var, "error" => error.to_string())),
                     }
                 }
                 true
             }
             Err(error) => {
-                emit_log(&format!("打开设备失败: {error:#}"));
+                emit_log(&tr!("open-device-error", "error" => format!("{error:#}")));
                 false
             }
         };
@@ -500,14 +490,14 @@ fn fastboot_status() -> Result<WorkerResult> {
         let product = vars
             .get("product")
             .and_then(|v| v.as_str())
-            .unwrap_or("未知设备")
-            .to_owned();
+            .map(str::to_owned)
+            .unwrap_or_else(|| tr!("unknown-device"));
         Ok(WorkerResult {
             ok: true,
             summary: if opened {
-                format!("已连接 fastboot 设备: {product}")
+                tr!("worker-fastboot-connected", "product" => product)
             } else {
-                "检测到 fastboot 设备，但无法打开".to_owned()
+                tr!("worker-fastboot-cannot-open")
             },
             payload: Some(serde_json::json!({
                 "connected": opened,
@@ -525,16 +515,16 @@ fn fastboot_reboot() -> Result<WorkerResult> {
 
         let devices = hm_fastboot::nusb::devices()
             .await
-            .context("枚举 USB 设备失败")?;
+            .context(tr!("enumerate-usb-error"))?;
         let info = single_fastboot_device(devices)?;
         let mut fb = NusbFastBoot::from_info(&info)
             .await
-            .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
-        fb.reboot().await.context("发送 fastboot 重启命令失败")?;
+            .context(tr!("open-fastboot-device-error"))?;
+        fb.reboot().await.context(tr!("fastboot-reboot-error"))?;
 
         Ok(WorkerResult {
             ok: true,
-            summary: "已发送设备重启命令".to_owned(),
+            summary: tr!("worker-reboot-sent"),
             payload: None,
         })
     })
@@ -565,24 +555,24 @@ fn fastboot_flash(image: &Path, target: &str) -> Result<WorkerResult> {
         use hm_fastboot::nusb::{FlashEvent, NusbFastBoot};
         let devices = hm_fastboot::nusb::devices()
             .await
-            .context("枚举 USB 设备失败")?;
+            .context(tr!("enumerate-usb-error"))?;
         let info = single_fastboot_device(devices)?;
         let mut fb = NusbFastBoot::from_info(&info)
             .await
-            .context("打开 fastboot 设备失败 (可能需要管理员权限或 WinUSB 驱动)")?;
+            .context(tr!("open-fastboot-device-error"))?;
 
         let mut progress = |event: FlashEvent<'_>| match event {
             FlashEvent::Message(msg) => emit_log(msg),
             FlashEvent::Part { index, total } => {
-                emit_log(&format!("进度: {index}/{total} 部分完成"));
+                emit_log(&tr!("flash-part-progress", "index" => index, "total" => total));
             }
         };
         fb.flash_image(target, image, &mut progress)
             .await
-            .with_context(|| format!("刷写 {} 到 {} 失败", image.display(), target))?;
+            .with_context(|| tr!("flash-image-error", "image" => image.display().to_string(), "target" => target.to_owned()))?;
         Ok(WorkerResult {
             ok: true,
-            summary: format!("已刷写 {} 到分区 {}", image.display(), target),
+            summary: tr!("worker-image-flashed", "image" => image.display().to_string(), "target" => target.to_owned()),
             payload: None,
         })
     })
@@ -593,19 +583,19 @@ fn single_fastboot_device<T>(devices: impl Iterator<Item = T>) -> Result<T> {
 
     require_single_device(devices).map_err(|error| match error {
         DeviceSelectionError::NotFound => {
-            anyhow::anyhow!("未检测到 fastboot 设备: 请确认设备已进入 fastboot 模式并连接 USB")
+            anyhow::anyhow!(tr!("fastboot-device-required"))
         }
         DeviceSelectionError::Multiple => {
-            anyhow::anyhow!("检测到多个 fastboot 设备: 请断开其他设备后重试")
+            anyhow::anyhow!(tr!("fastboot-single-device-required"))
         }
     })
 }
 
 fn probe_ramdisk(image: &Path) -> Result<serde_json::Value> {
     let frame = common::formats::harmony::HvbFrame::load(image)
-        .with_context(|| format!("读取 {}", image.display()))?;
+        .with_context(|| tr!("reading-file", "file" => image.display().to_string()))?;
     let payload = frame.extract_image_payload();
-    ensure!(!payload.is_empty(), "镜像内没有负载数据");
+    ensure!(!payload.is_empty(), "{}", tr!("image-no-payload"));
     let fmt = check_fmt_full(payload);
     let cpio_bytes = if fmt.is_compressed() {
         common::compress::decompress_vec(fmt, payload).map_err(std::io::Error::other)?

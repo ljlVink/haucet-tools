@@ -74,11 +74,11 @@ impl NvmePage {
 
     fn image_row(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("镜像文件").strong());
+            ui.label(egui::RichText::new(tr!("image-file")).strong());
             let field_width = (ui.available_width() - 190.0).max(120.0);
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.image)
-                    .hint_text("选择 NVME 分区镜像")
+                    .hint_text(tr!("choose-nvme-image"))
                     .font(egui::TextStyle::Monospace)
                     .desired_width(field_width),
             );
@@ -90,8 +90,8 @@ impl NvmePage {
                     self.inspect_pending = true;
                 }
             }
-            if ui.button("选择文件").clicked()
-                && let Some(path) = app.pick_file("选择 NVE 镜像", &[])
+            if ui.button(tr!("choose-file")).clicked()
+                && let Some(path) = app.pick_file(&tr!("choose-nve-image"), &[])
             {
                 self.set_image(path.display().to_string());
             }
@@ -101,38 +101,44 @@ impl NvmePage {
     fn render_summary(&self, ui: &mut egui::Ui, summary: &NveImageSummary) {
         let blocks = format!("{} / {}", summary.active_blocks, summary.total_blocks);
         let entries = summary.valid_items.to_string();
-        let version = format!("版本 {}", summary.version);
+        let version = tr!("version-value", "version" => summary.version);
         let (crc_value, crc_detail, crc_color) = if !summary.crc_supported {
-            (
-                "未启用".to_owned(),
-                "检测到的副本未声明 CRC32C".to_owned(),
-                None,
-            )
+            (tr!("disabled"), tr!("crc-not-declared"), None)
         } else if summary.crc_invalid == 0 {
             (
-                "全部通过".to_owned(),
-                format!("{} 项已校验", summary.crc_valid),
+                tr!("all-passed"),
+                tr!("items-verified", "count" => summary.crc_valid),
                 Some(egui::Color32::from_rgb(95, 190, 125)),
             )
         } else {
             (
-                format!("{} 项异常", summary.crc_invalid),
-                format!("{} 项通过", summary.crc_valid),
+                tr!("items-invalid", "count" => summary.crc_invalid),
+                tr!("items-passed", "count" => summary.crc_valid),
                 Some(egui::Color32::from_rgb(225, 155, 60)),
             )
         };
 
-        ui.label(egui::RichText::new("镜像概览").strong().size(16.0));
+        ui.label(
+            egui::RichText::new(tr!("image-overview"))
+                .strong()
+                .size(16.0),
+        );
         ui.add_space(5.0);
-        summary_row(ui, "活动块", &blocks, "活动 / 总数", None);
-        summary_row(ui, "有效条目", &entries, &version, None);
+        summary_row(
+            ui,
+            &tr!("active-blocks"),
+            &blocks,
+            &tr!("active-total"),
+            None,
+        );
+        summary_row(ui, &tr!("valid-entries"), &entries, &version, None);
         summary_row(ui, "CRC32C", &crc_value, &crc_detail, crc_color);
         if summary.crc_invalid != 0 {
             ui.add_space(8.0);
             message_box(
                 ui,
                 egui::Color32::from_rgb(225, 155, 60),
-                "镜像中存在 CRC32C 异常副本；异常副本不会作为当前数据或写入来源。",
+                tr!("crc-invalid-warning"),
             );
         }
     }
@@ -153,7 +159,7 @@ impl NvmePage {
             .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new("编辑条目").strong().size(16.0));
+                    ui.label(egui::RichText::new(tr!("edit-entry")).strong().size(16.0));
                     if let Some(item) = &selected {
                         ui.label(
                             egui::RichText::new(format!("#{}", item.number))
@@ -162,7 +168,7 @@ impl NvmePage {
                         );
                         if item.kernel_protected {
                             ui.label(
-                                egui::RichText::new("内核保护")
+                                egui::RichText::new(tr!("kernel-protected"))
                                     .small()
                                     .strong()
                                     .color(egui::Color32::from_rgb(225, 155, 60)),
@@ -174,17 +180,17 @@ impl NvmePage {
 
                 let previous_mode = self.value_mode;
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new("条目名称").strong());
+                    ui.label(egui::RichText::new(tr!("entry-name")).strong());
                     ui.add(
                         egui::TextEdit::singleline(&mut self.key)
-                            .hint_text("例如 SN、IMEI、FBLOCK")
+                            .hint_text(tr!("entry-name-hint"))
                             .font(egui::TextStyle::Monospace)
                             .desired_width(190.0),
                     );
                     ui.add_space(12.0);
-                    ui.label(egui::RichText::new("值格式").strong());
-                    ui.selectable_value(&mut self.value_mode, ValueMode::Text, "文本");
-                    ui.selectable_value(&mut self.value_mode, ValueMode::Hex, "十六进制");
+                    ui.label(egui::RichText::new(tr!("value-format")).strong());
+                    ui.selectable_value(&mut self.value_mode, ValueMode::Text, tr!("text"));
+                    ui.selectable_value(&mut self.value_mode, ValueMode::Hex, tr!("hexadecimal"));
                 });
                 if previous_mode != self.value_mode
                     && let Some(item) = &selected
@@ -197,19 +203,21 @@ impl NvmePage {
 
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("条目值").strong());
+                    ui.label(egui::RichText::new(tr!("entry-value")).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            egui::RichText::new(format!("{} 个字符", self.value.chars().count()))
-                                .small()
-                                .weak(),
+                            egui::RichText::new(
+                                tr!("character-count", "count" => self.value.chars().count()),
+                            )
+                            .small()
+                            .weak(),
                         );
                     });
                 });
                 let hint = if self.value_mode == ValueMode::Hex {
-                    "输入十六进制字节，例如 0001ff"
+                    tr!("hex-value-hint")
                 } else {
-                    "输入文本内容"
+                    tr!("text-value-hint")
                 };
                 ui.add(
                     egui::TextEdit::multiline(&mut self.value)
@@ -225,17 +233,13 @@ impl NvmePage {
                     && !self.key.trim().is_empty()
                     && self.summary.is_some();
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        egui::RichText::new("写入下一代副本前会自动创建带时间戳的备份")
-                            .small()
-                            .weak(),
-                    );
+                    ui.label(egui::RichText::new(tr!("nve-backup-help")).small().weak());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if run_button(
                             ui,
-                            "写入并备份",
+                            &tr!("write-and-backup"),
                             ready,
-                            Some("修改源镜像中的条目，并按头部声明规则更新校验"),
+                            Some(&tr!("write-and-backup-hint")),
                         )
                         .clicked()
                         {
@@ -255,14 +259,16 @@ impl NvmePage {
 
     fn render_items(&mut self, ui: &mut egui::Ui, summary: &NveImageSummary) {
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new("NVE 条目").strong().size(16.0));
+            ui.label(egui::RichText::new(tr!("nve-entries")).strong().size(16.0));
             ui.add_space(10.0);
             ui.add(
                 egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text("搜索名称、编号或值")
+                    .hint_text(tr!("search-entry-hint"))
                     .desired_width(280.0),
             );
-            if !self.filter.is_empty() && ui.button("×").on_hover_text("清除搜索").clicked() {
+            if !self.filter.is_empty()
+                && ui.button("×").on_hover_text(tr!("clear-search")).clicked()
+            {
                 self.filter.clear();
             }
         });
@@ -282,9 +288,11 @@ impl NvmePage {
             .cloned()
             .collect::<Vec<NveItemSummary>>();
         ui.label(
-            egui::RichText::new(format!("显示 {} / {} 项", items.len(), summary.items.len()))
-                .small()
-                .weak(),
+            egui::RichText::new(
+                tr!("showing-items", "shown" => items.len(), "total" => summary.items.len()),
+            )
+            .small()
+            .weak(),
         );
         ui.add_space(4.0);
 
@@ -305,16 +313,16 @@ impl NvmePage {
             .column(Column::exact(82.0))
             .header(30.0, |mut header| {
                 header.col(|ui| {
-                    ui.strong("编号");
+                    ui.strong(tr!("number"));
                 });
                 header.col(|ui| {
-                    ui.strong("名称");
+                    ui.strong(tr!("name"));
                 });
                 header.col(|ui| {
-                    ui.strong("大小");
+                    ui.strong(tr!("size"));
                 });
                 header.col(|ui| {
-                    ui.strong("值");
+                    ui.strong(tr!("value"));
                 });
                 header.col(|ui| {
                     ui.strong("CRC");
@@ -327,7 +335,7 @@ impl NvmePage {
                         row.col(|_| {});
                         row.col(|_| {});
                         row.col(|ui| {
-                            ui.label(egui::RichText::new("没有匹配的条目").weak());
+                            ui.label(egui::RichText::new(tr!("no-matching-entries")).weak());
                         });
                         row.col(|_| {});
                     });
@@ -345,7 +353,7 @@ impl NvmePage {
                             ui.label(egui::RichText::new(&item.name).strong().monospace());
                             if item.kernel_protected {
                                 ui.label(
-                                    egui::RichText::new("保护")
+                                    egui::RichText::new(tr!("protected"))
                                         .small()
                                         .color(egui::Color32::from_rgb(225, 155, 60)),
                                 );
@@ -369,7 +377,7 @@ impl NvmePage {
                             )
                             .on_hover_ui(|ui| {
                                 ui.set_max_width(520.0);
-                                ui.label(egui::RichText::new("十六进制值").small().weak());
+                                ui.label(egui::RichText::new(tr!("hex-value")).small().weak());
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(&item.value_hex).monospace(),
@@ -377,7 +385,7 @@ impl NvmePage {
                                     .wrap(),
                                 );
                                 ui.label(
-                                    egui::RichText::new("双击可复制当前显示值").small().weak(),
+                                    egui::RichText::new(tr!("double-click-copy")).small().weak(),
                                 );
                             });
                         if response.double_clicked() {
@@ -386,16 +394,16 @@ impl NvmePage {
                     });
                     row.col(|ui| {
                         if !item.crc_supported {
-                            ui.label(egui::RichText::new("未启用").weak());
+                            ui.label(egui::RichText::new(tr!("disabled")).weak());
                         } else if item.crc_valid {
                             ui.label(
-                                egui::RichText::new("通过")
+                                egui::RichText::new(tr!("passed"))
                                     .strong()
                                     .color(egui::Color32::from_rgb(95, 190, 125)),
                             );
                         } else {
                             ui.label(
-                                egui::RichText::new("异常")
+                                egui::RichText::new(tr!("invalid"))
                                     .strong()
                                     .color(egui::Color32::from_rgb(225, 90, 90)),
                             );
@@ -412,7 +420,7 @@ impl NvmePage {
     }
 
     fn render_blocks(&self, ui: &mut egui::Ui, blocks: &[NveBlockSummary]) {
-        egui::CollapsingHeader::new(format!("检测到的副本（{}）", blocks.len()))
+        egui::CollapsingHeader::new(tr!("detected-copies", "count" => blocks.len()))
             .id_salt("nvme-blocks")
             .default_open(false)
             .show(ui, |ui| {
@@ -427,16 +435,16 @@ impl NvmePage {
                     .column(Column::remainder().at_least(120.0))
                     .header(24.0, |mut header| {
                         header.col(|ui| {
-                            ui.strong("块");
+                            ui.strong(tr!("block"));
                         });
                         header.col(|ui| {
-                            ui.strong("偏移");
+                            ui.strong(tr!("offset"));
                         });
                         header.col(|ui| {
-                            ui.strong("代次");
+                            ui.strong(tr!("generation"));
                         });
                         header.col(|ui| {
-                            ui.strong("条目");
+                            ui.strong(tr!("entries"));
                         });
                         header.col(|ui| {
                             ui.strong("CRC32C");
@@ -459,12 +467,9 @@ impl NvmePage {
                                 });
                                 row.col(|ui| {
                                     if block.crc_supported {
-                                        ui.label(format!(
-                                            "{} 通过 / {} 异常",
-                                            block.crc_valid, block.crc_invalid
-                                        ));
+                                        ui.label(tr!("crc-pass-invalid", "passed" => block.crc_valid, "invalid" => block.crc_invalid));
                                     } else {
-                                        ui.label("未启用");
+                                        ui.label(tr!("disabled"));
                                     }
                                 });
                             });
@@ -484,7 +489,10 @@ impl NvmePage {
             egui::Color32::from_rgb(230, 90, 90)
         };
         message_box(ui, color, &result.summary);
-        if result.ok && !result.output.is_empty() && ui.button("打开备份位置").clicked() {
+        if result.ok
+            && !result.output.is_empty()
+            && ui.button(tr!("open-backup-location")).clicked()
+        {
             open_in_file_manager(std::path::Path::new(&result.output));
         }
     }
@@ -540,7 +548,7 @@ impl NvmePage {
                 Err(error) => {
                     self.result = Some(ResultView {
                         ok: false,
-                        summary: format!("无法解析 NVE 读取结果: {error}"),
+                        summary: tr!("nve-result-parse-error", "error" => error.to_string()),
                         output: String::new(),
                     });
                 }
@@ -585,7 +593,7 @@ fn summary_row(
     ui.horizontal_wrapped(|ui| {
         ui.add_sized(
             [88.0, 22.0],
-            egui::Label::new(egui::RichText::new(format!("{label}：")).strong()),
+            egui::Label::new(egui::RichText::new(format!("{label}:")).strong()),
         );
         let mut value_text = egui::RichText::new(value).strong();
         if let Some(color) = color {

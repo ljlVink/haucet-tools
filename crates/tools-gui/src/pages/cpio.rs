@@ -19,11 +19,11 @@ pub enum CpioSource {
 }
 
 impl CpioSource {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::File => "cpio 文件",
-            Self::Image => "ramdisk 镜像",
-            Self::Workspace => "解包工作区",
+            Self::File => tr!("cpio-file"),
+            Self::Image => tr!("ramdisk-image"),
+            Self::Workspace => tr!("unpacked-workspace"),
         }
     }
 }
@@ -139,7 +139,7 @@ struct LoadRequest {
 
 pub struct LocalJob {
     rx: Receiver<std::result::Result<LocalOutcome, String>>,
-    pub label: &'static str,
+    pub label: String,
 }
 
 impl std::fmt::Debug for LocalJob {
@@ -155,12 +155,14 @@ impl LocalJob {
         match self.rx.try_recv() {
             Ok(result) => Some(result),
             Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => Some(Err(format!("{}任务线程意外退出", self.label))),
+            Err(TryRecvError::Disconnected) => Some(Err(
+                tr!("local-job-disconnected", "job" => self.label.clone()),
+            )),
         }
     }
 }
 
-fn spawn_local<F>(label: &'static str, work: F) -> LocalJob
+fn spawn_local<F>(label: String, work: F) -> LocalJob
 where
     F: FnOnce() -> anyhow::Result<LocalOutcome> + Send + 'static,
 {
@@ -240,7 +242,7 @@ impl CpioPage {
         let busy = self.load_job.is_some();
         ui.add_enabled_ui(!busy, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("来源类型").strong());
+                ui.label(egui::RichText::new(tr!("source-type")).strong());
                 for source in [CpioSource::File, CpioSource::Image, CpioSource::Workspace] {
                     ui.selectable_value(&mut self.source, source, source.label());
                 }
@@ -248,28 +250,36 @@ impl CpioPage {
         });
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("打开来源").strong());
+            ui.label(egui::RichText::new(tr!("open-source")).strong());
             let field_width = (ui.available_width() - 190.0).max(120.0);
             let path_edit = ui.add_enabled(
                 !busy,
                 egui::TextEdit::singleline(&mut self.path)
                     .hint_text(match self.source {
-                        CpioSource::File => "ramdisk.cpio 文件路径",
-                        CpioSource::Image => "ramdisk 镜像路径",
-                        CpioSource::Workspace => "解包工作区目录",
+                        CpioSource::File => tr!("cpio-file-path"),
+                        CpioSource::Image => tr!("ramdisk-image-path"),
+                        CpioSource::Workspace => tr!("unpacked-workspace-path"),
                     })
                     .desired_width(field_width),
             );
             let mut load_requested =
                 path_edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
             if ui
-                .add_enabled(self.load_job.is_none(), egui::Button::new("选择文件"))
+                .add_enabled(
+                    self.load_job.is_none(),
+                    egui::Button::new(tr!("choose-source")),
+                )
                 .clicked()
             {
                 let picked = match self.source {
-                    CpioSource::File => app.pick_file("选择 cpio 文件", &[("cpio", &["cpio"])]),
-                    CpioSource::Image => app.pick_file("选择 ramdisk 镜像", &[("镜像", &["img"])]),
-                    CpioSource::Workspace => app.pick_dir("选择解包工作区"),
+                    CpioSource::File => {
+                        app.pick_file(&tr!("choose-cpio-file"), &[("cpio", &["cpio"])])
+                    }
+                    CpioSource::Image => app.pick_file(
+                        &tr!("choose-ramdisk-image"),
+                        &[(tr!("filter-image").as_str(), &["img"])],
+                    ),
+                    CpioSource::Workspace => app.pick_dir(&tr!("choose-unpacked-workspace")),
                 };
                 if let Some(path) = picked {
                     self.path = path.display().to_string();
@@ -321,7 +331,7 @@ impl CpioPage {
         self.revision = 0;
         self.active_load = Some(request.clone());
         let worker_request = request;
-        self.load_job = Some(spawn_local("加载 cpio", move || {
+        self.load_job = Some(spawn_local(tr!("load-cpio"), move || {
             let source = worker_request.source;
             let path = worker_request.path.clone();
             let (cpio, from_image, source_path) = match source {
@@ -330,13 +340,13 @@ impl CpioPage {
                     let cpio_path = std::path::Path::new(&path).join("ramdisk.cpio");
                     let text = cpio_path
                         .to_str()
-                        .ok_or_else(|| anyhow::anyhow!("路径不是 UTF-8"))?;
+                        .ok_or_else(|| anyhow::anyhow!(tr!("path-not-utf8")))?;
                     (Cpio::load_from_file(text)?, false, text.to_owned())
                 }
                 CpioSource::Image => {
                     let frame = HvbFrame::load(std::path::Path::new(&path))?;
                     let payload = frame.extract_image_payload();
-                    anyhow::ensure!(!payload.is_empty(), "镜像内没有负载数据");
+                    anyhow::ensure!(!payload.is_empty(), "{}", tr!("image-no-payload"));
                     let fmt = check_fmt_full(payload);
                     let bytes = if fmt.is_compressed() {
                         decompress_vec(fmt, payload).map_err(std::io::Error::other)?
@@ -361,7 +371,7 @@ impl CpioPage {
         let Some(result) = job.poll() else {
             return;
         };
-        let label = job.label;
+        let label = job.label.clone();
         self.load_job = None;
         self.active_load = None;
         match result {
@@ -373,15 +383,11 @@ impl CpioPage {
                 if request == current {
                     self.message = Some((
                         true,
-                        format!(
-                            "已加载 {} 个条目(来源: {})",
-                            loaded.cpio.entries.len(),
-                            label
-                        ),
+                        tr!("cpio-loaded", "count" => loaded.cpio.entries.len(), "source" => label),
                     ));
                     self.loaded = Some(loaded);
                 } else {
-                    self.message = Some((false, "已忽略过期的 cpio 加载结果".to_owned()));
+                    self.message = Some((false, tr!("cpio-stale-result")));
                 }
             }
             Ok(LocalOutcome::Done(text)) => {
@@ -403,7 +409,7 @@ impl CpioPage {
                 if self.revision == revision {
                     self.dirty = false;
                 }
-                self.message = Some((true, format!("已保存到 {path}")));
+                self.message = Some((true, tr!("saved-to", "path" => path)));
             }
             Err(error) => {
                 self.message = Some((false, error));
@@ -417,27 +423,42 @@ impl CpioPage {
     fn summary_row(&self, ui: &mut egui::Ui, loaded: &Loaded) {
         let (count, dirs) = loaded.stats();
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(format!("{} 个条目 · {} 个目录 ", count, dirs,)).weak());
+            ui.label(
+                egui::RichText::new(tr!("cpio-summary", "entries" => count, "directories" => dirs))
+                    .weak(),
+            );
             ui.separator();
-            ui.label(egui::RichText::new("补丁状态").weak());
+            ui.label(egui::RichText::new(tr!("patch-status")).weak());
             match common::ramdisk::patch_status(&loaded.cpio) {
                 common::ramdisk::RamdiskPatchStatus::Patched => {
-                    badge_text(ui, "已打过补丁", egui::Color32::from_rgb(230, 170, 40));
+                    badge_text(
+                        ui,
+                        &tr!("already-patched"),
+                        egui::Color32::from_rgb(230, 170, 40),
+                    );
                 }
                 common::ramdisk::RamdiskPatchStatus::Patchable => {
                     badge_text(
                         ui,
-                        "原厂(bin/init_early 存在)",
+                        &tr!("stock-init-early-present"),
                         egui::Color32::from_rgb(90, 200, 120),
                     );
                 }
                 common::ramdisk::RamdiskPatchStatus::Unsupported => {
-                    badge_text(ui, "未知布局", egui::Color32::from_rgb(230, 170, 40));
+                    badge_text(
+                        ui,
+                        &tr!("unknown-layout"),
+                        egui::Color32::from_rgb(230, 170, 40),
+                    );
                 }
             }
             if self.dirty {
                 ui.separator();
-                badge_text(ui, "有未保存的修改", egui::Color32::from_rgb(230, 170, 40));
+                badge_text(
+                    ui,
+                    &tr!("unsaved-changes"),
+                    egui::Color32::from_rgb(230, 170, 40),
+                );
             }
             if !loaded.from_image {
                 ui.separator();
@@ -449,16 +470,16 @@ impl CpioPage {
 
     fn browser(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp, loaded: &mut Loaded) {
         ui.horizontal(|ui| {
-            ui.label("过滤");
+            ui.label(tr!("filter"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.filter)
-                    .hint_text("按路径关键字过滤")
+                    .hint_text(tr!("filter-path-hint"))
                     .desired_width(220.0),
             );
-            if ui.button("展开全部").clicked() {
+            if ui.button(tr!("expand-all")).clicked() {
                 self.expand = true;
             }
-            if ui.button("折叠全部").clicked() {
+            if ui.button(tr!("collapse-all")).clicked() {
                 self.expand = false;
             }
         });
@@ -546,35 +567,43 @@ impl CpioPage {
         let busy = self.load_job.is_some();
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(!busy && selection.is_some(), egui::Button::new("提取选中"))
+                .add_enabled(
+                    !busy && selection.is_some(),
+                    egui::Button::new(tr!("extract-selected")),
+                )
                 .clicked()
-                && let Some(dir) = app.pick_dir("选择提取目标目录")
+                && let Some(dir) = app.pick_dir(&tr!("choose-extract-directory"))
             {
                 let entry = selection.clone().unwrap_or_default();
                 let dir = dir.display().to_string();
                 let snapshot = loaded.snapshot();
                 self.message = None;
-                self.load_job = Some(spawn_local("提取条目", move || {
+                self.load_job = Some(spawn_local(tr!("extract-entry-job"), move || {
                     extract_entries(&snapshot, std::slice::from_ref(&entry), &dir)?;
-                    Ok(LocalOutcome::Done(format!("已提取 {entry}")))
+                    Ok(LocalOutcome::Done(tr!("extracted-entry", "entry" => entry)))
                 }));
             }
             if ui
-                .add_enabled(!busy, egui::Button::new("提取全部"))
+                .add_enabled(!busy, egui::Button::new(tr!("extract-all")))
                 .clicked()
-                && let Some(dir) = app.pick_dir("选择提取目标目录")
+                && let Some(dir) = app.pick_dir(&tr!("choose-extract-directory"))
             {
                 let paths = loaded.cpio.entries.keys().cloned().collect::<Vec<_>>();
                 let dir = dir.display().to_string();
                 let snapshot = loaded.snapshot();
                 self.message = None;
-                self.load_job = Some(spawn_local("提取全部", move || {
+                self.load_job = Some(spawn_local(tr!("extract-all-job"), move || {
                     let count = extract_entries(&snapshot, &paths, &dir)?;
-                    Ok(LocalOutcome::Done(format!("已提取 {count} 个条目到 {dir}")))
+                    Ok(LocalOutcome::Done(
+                        tr!("extracted-all", "count" => count, "directory" => dir),
+                    ))
                 }));
             }
             if ui
-                .add_enabled(selection.is_some(), egui::Button::new("删除选中"))
+                .add_enabled(
+                    selection.is_some(),
+                    egui::Button::new(tr!("delete-selected")),
+                )
                 .clicked()
                 && let Some(entry) = selection.clone()
             {
@@ -588,10 +617,10 @@ impl CpioPage {
                 loaded.rebuild_tree();
                 self.selection = None;
                 self.mark_dirty();
-                self.message = Some((true, format!("已删除 {entry}")));
+                self.message = Some((true, tr!("deleted-entry", "entry" => entry)));
             }
-            if ui.button("添加文件").clicked()
-                && let Some(file) = app.pick_file("选择要添加的文件", &[])
+            if ui.button(tr!("add-file")).clicked()
+                && let Some(file) = app.pick_file(&tr!("choose-file-to-add"), &[])
             {
                 let suggested = file
                     .file_name()
@@ -601,7 +630,7 @@ impl CpioPage {
                 self.add_target = suggested;
                 self.add_mode = "0750".to_owned();
             }
-            if ui.button("新建目录").clicked() {
+            if ui.button(tr!("new-directory")).clicked() {
                 self.mkdir_target = "new/dir".to_owned();
             }
         });
@@ -612,15 +641,15 @@ impl CpioPage {
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("归档路径");
+                        ui.label(tr!("archive-path"));
                         ui.add(
                             egui::TextEdit::singleline(&mut self.add_target)
-                                .hint_text("例如 bin/init_early")
+                                .hint_text(tr!("example-bin-init-early"))
                                 .desired_width(240.0),
                         );
-                        ui.label("模式");
+                        ui.label(tr!("mode"));
                         ui.add(egui::TextEdit::singleline(&mut self.add_mode).desired_width(64.0));
-                        if ui.button("确认添加").clicked() {
+                        if ui.button(tr!("confirm-add")).clicked() {
                             let mode = cpio::parse_cpio_mode(self.add_mode.trim());
                             let target = validate_archive_path(&self.add_target);
                             match (mode, target, self.pending_add.clone()) {
@@ -630,27 +659,27 @@ impl CpioPage {
                                             loaded.rebuild_tree();
                                             self.mark_dirty();
                                             self.message =
-                                                Some((true, format!("已添加 {file} → {target}")));
+                                                Some((true, tr!("added-file", "file" => file, "target" => target)));
                                             self.pending_add = None;
                                         }
                                         Err(error) => {
                                             self.message =
-                                                Some((false, format!("添加失败: {error}")));
+                                                Some((false, tr!("add-failed", "error" => error.to_string())));
                                         }
                                     }
                                 }
                                 (Err(error), _, _) => {
-                                    self.message = Some((false, format!("无效的模式: {error}")));
+                                    self.message = Some((false, tr!("invalid-mode", "error" => error.to_string())));
                                 }
                                 (_, Err(error), _) => {
                                     self.message = Some((false, error));
                                 }
                                 (_, _, None) => {
-                                    self.message = Some((false, "请选择要添加的文件".to_owned()));
+                                    self.message = Some((false, tr!("choose-file-to-add-first")));
                                 }
                             }
                         }
-                        if ui.button("取消").clicked() {
+                        if ui.button(tr!("cancel")).clicked() {
                             self.pending_add = None;
                         }
                     });
@@ -662,19 +691,22 @@ impl CpioPage {
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("目录路径");
+                        ui.label(tr!("directory-path"));
                         ui.add(
                             egui::TextEdit::singleline(&mut self.mkdir_target)
-                                .hint_text("例如 new/dir")
+                                .hint_text(tr!("example-new-dir"))
                                 .desired_width(240.0),
                         );
-                        if ui.button("创建").clicked() {
+                        if ui.button(tr!("create")).clicked() {
                             match validate_archive_path(&self.mkdir_target) {
                                 Ok(target) => {
                                     loaded.cpio.mkdir(0o750, &target);
                                     loaded.rebuild_tree();
                                     self.mark_dirty();
-                                    self.message = Some((true, format!("已创建目录 {target}")));
+                                    self.message = Some((
+                                        true,
+                                        tr!("created-directory", "directory" => target),
+                                    ));
                                     self.mkdir_target.clear();
                                 }
                                 Err(error) => {
@@ -691,16 +723,16 @@ impl CpioPage {
             if ui
                 .add_enabled(
                     !busy && !loaded.from_image && self.dirty,
-                    egui::Button::new("保存修改"),
+                    egui::Button::new(tr!("save-changes")),
                 )
-                .on_hover_text("写回当前来源文件")
+                .on_hover_text(tr!("save-source-hint"))
                 .clicked()
             {
                 let path = loaded.source_path.clone();
                 let snapshot = loaded.snapshot();
                 let revision = self.revision;
                 self.message = None;
-                self.load_job = Some(spawn_local("保存", move || {
+                self.load_job = Some(spawn_local(tr!("save-job"), move || {
                     let mut bytes = Vec::new();
                     snapshot.dump_to(&mut bytes)?;
                     std::fs::write(&path, bytes)?;
@@ -712,15 +744,15 @@ impl CpioPage {
                 }));
             }
             if ui
-                .add_enabled(!busy, egui::Button::new("另存为"))
+                .add_enabled(!busy, egui::Button::new(tr!("save-as")))
                 .clicked()
-                && let Some(path) = app.pick_save("保存 cpio 文件", "ramdisk.cpio")
+                && let Some(path) = app.pick_save(&tr!("save-cpio-file"), "ramdisk.cpio")
             {
                 let path = path.display().to_string();
                 let snapshot = loaded.snapshot();
                 let revision = self.revision;
                 self.message = None;
-                self.load_job = Some(spawn_local("另存为", move || {
+                self.load_job = Some(spawn_local(tr!("save-as-job"), move || {
                     let mut bytes = Vec::new();
                     snapshot.dump_to(&mut bytes)?;
                     std::fs::write(&path, bytes)?;
@@ -732,12 +764,7 @@ impl CpioPage {
                 }));
             }
             if loaded.from_image {
-                ui.label(
-                    egui::RichText::new(
-                        "内容来自镜像: 修改后请\"另存为\"cpio, 再到 Ramdisk 页重新打包",
-                    )
-                    .weak(),
-                );
+                ui.label(egui::RichText::new(tr!("cpio-from-image-help")).weak());
             }
         });
     }
@@ -758,9 +785,9 @@ impl CpioPage {
                     .num_columns(2)
                     .spacing([16.0, 4.0])
                     .show(ui, |ui| {
-                        crate::util::kv(ui, "权限", mode_string(entry.mode));
+                        crate::util::kv(ui, &tr!("permissions"), mode_string(entry.mode));
                         crate::util::kv(ui, "uid / gid", format!("{} / {}", entry.uid, entry.gid));
-                        crate::util::kv(ui, "大小", human_size(entry.data.len() as u64));
+                        crate::util::kv(ui, &tr!("size"), human_size(entry.data.len() as u64));
                     });
             });
     }
@@ -775,9 +802,13 @@ fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<u
     let mut count = 0;
     for path in paths {
         let output = common::fs_util::safe_join(std::path::Path::new(dir), path)
-            .map_err(|error| anyhow::anyhow!("不安全的 cpio 条目路径 {path:?}: {error:#}"))?;
+            .map_err(|error| anyhow::anyhow!(tr!("unsafe-cpio-entry", "path" => format!("{path:?}"), "error" => format!("{error:#}"))))?;
         cpio.extract_entry(path, &output.display().to_string())
-            .map_err(|error| anyhow::anyhow!("提取 {path} 失败: {error}"))?;
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    tr!("extract-failed", "path" => path.clone(), "error" => error.to_string())
+                )
+            })?;
         count += 1;
     }
     Ok(count)
@@ -786,11 +817,11 @@ fn extract_entries(cpio: &Cpio, paths: &[String], dir: &str) -> anyhow::Result<u
 fn validate_archive_path(value: &str) -> std::result::Result<String, String> {
     let value = value.trim();
     if value.is_empty() {
-        return Err("归档路径不能为空".to_owned());
+        return Err(tr!("archive-path-empty"));
     }
     if value.contains('\\') || common::fs_util::safe_join(std::path::Path::new("."), value).is_err()
     {
-        return Err(format!("不安全的 cpio 条目路径: {value:?}"));
+        return Err(tr!("unsafe-cpio-path", "path" => format!("{value:?}")));
     }
     Ok(cpio::norm_path(value))
 }
