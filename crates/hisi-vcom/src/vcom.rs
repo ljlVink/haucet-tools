@@ -102,11 +102,6 @@ pub fn upload(
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<(), Error> {
     let length = checked_upload_length(address, data.len())?;
-    log(&format!(
-        "Uploading {} bytes to 0x{:08X}",
-        data.len(),
-        address
-    ));
     write_and_verify(transport, &head_command(address, length), log)?;
 
     let mut seq: u64 = 0;

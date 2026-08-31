@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, ensure};
 use hisi_vcom::transport::{self, DeviceFilter, SerialVcomDevice};
 use hisi_vcom::vcom;
+use std::cell::Cell;
 use std::fs;
+use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 
 pub fn devices() -> Result<()> {
@@ -32,16 +34,46 @@ pub fn flash(port: &str, address: u32, file: &Path) -> Result<()> {
     validate_loader(&data, file)?;
     let mut device = SerialVcomDevice::open(port, 115200)
         .with_context(|| format!("opening VCOM port {port}"))?;
-    let mut log = |message: &str| println!("* {message}");
+    let interactive = io::stdout().is_terminal();
+    let progress_active = Cell::new(false);
+    let mut log = |message: &str| {
+        if progress_active.replace(false) {
+            println!();
+        }
+        println!("* {message}");
+    };
     let mut last_progress_bucket = 0;
 
-    vcom::upload(&mut device, &data, address, &mut log, &mut |sent, total| {
-        if should_report_progress(sent, total, &mut last_progress_bucket) {
+    let result = vcom::upload(&mut device, &data, address, &mut log, &mut |sent, total| {
+        if interactive {
+            print_progress(sent, total);
+            progress_active.set(true);
+        } else if should_report_progress(sent, total, &mut last_progress_bucket) {
             println!("  {sent}/{total} bytes");
         }
-    })?;
+    });
+    if progress_active.replace(false) {
+        println!();
+    }
+    result?;
     println!("Flash finished.");
     Ok(())
+}
+
+fn print_progress(sent: u64, total: u64) {
+    const BAR_WIDTH: usize = 30;
+
+    let sent = sent.min(total);
+    let percent = if total == 0 { 100 } else { sent * 100 / total };
+    let filled = if total == 0 {
+        BAR_WIDTH
+    } else {
+        (sent * BAR_WIDTH as u64 / total) as usize
+    };
+    let bar = format!("{}{}", "#".repeat(filled), "-".repeat(BAR_WIDTH - filled));
+
+    print!("\r  [{bar}] {percent:3}%  {sent}/{total} bytes");
+    let _ = io::stdout().flush();
 }
 
 fn validate_loader(data: &[u8], file: &Path) -> Result<()> {
