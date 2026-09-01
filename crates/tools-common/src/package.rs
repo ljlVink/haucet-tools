@@ -3,15 +3,17 @@ use crate::formats::erofs;
 use crate::formats::harmony::HARMONY_MAGIC;
 use crate::formats::header::{FileFormat, check_fmt};
 use crate::fs_util;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::mpsc::{self, Sender};
+use std::thread::{self, JoinHandle};
 use zip::ZipArchive;
 use zip::result::ZipError;
 
@@ -94,12 +96,33 @@ pub struct PackageIndex {
 }
 
 pub fn unpack_reader<R: Read>(
-    mut reader: R,
+    reader: R,
     total_length: Option<u64>,
     out: &Path,
     layout: UpdateLayout,
     force: bool,
 ) -> Result<Vec<Component>> {
+    unpack_reader_with_callback(
+        reader,
+        total_length,
+        out,
+        layout,
+        force,
+        |_component, _image| Ok(()),
+    )
+}
+
+fn unpack_reader_with_callback<R: Read, F>(
+    mut reader: R,
+    total_length: Option<u64>,
+    out: &Path,
+    layout: UpdateLayout,
+    force: bool,
+    mut on_component_written: F,
+) -> Result<Vec<Component>>
+where
+    F: FnMut(&Component, &Path) -> Result<()>,
+{
     let index = read_index(&mut reader, total_length, layout)?;
     prepare_outputs(out, &index.components, force)?;
 
@@ -112,6 +135,10 @@ pub fn unpack_reader<R: Read>(
             component.size
         );
         write_component(&mut reader, out, component, position, force)?;
+        // The atomic rename in write_component has completed, so the worker
+        // can safely inspect and extract the final image while the next one
+        // is streamed from update.bin.
+        on_component_written(component, &out.join(&component.output_name))?;
     }
     Ok(index.components)
 }
@@ -469,6 +496,22 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
     fs::create_dir_all(&images_dir)?;
     fs::create_dir_all(&partitions_dir)?;
 
+    let requested_names = requested_partition_names(partitions)?;
+    let partition_worker = PartitionUnpackWorker::new()?;
+    let mut on_component_written = |component: &Component, image: &Path| {
+        if let Some(task) = partition_task(
+            component,
+            image,
+            &requested_names,
+            all_erofs,
+            &partitions_dir,
+            force,
+        )? {
+            partition_worker.submit(task)?;
+        }
+        Ok(())
+    };
+
     let components = if is_update_bin_file(input)? {
         let file = File::open(input)
             .with_context(|| format!("opening update package {}", input.display()))?;
@@ -477,12 +520,13 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
             "streaming update.bin ({} bytes) directly into component images",
             size
         );
-        unpack_reader(
+        unpack_reader_with_callback(
             BufReader::with_capacity(IO_BUFFER_SIZE, file),
             Some(size),
             &images_dir,
             layout,
             force,
+            &mut on_component_written,
         )?
     } else {
         let file = File::open(input)
@@ -505,12 +549,13 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
                     "streaming update.bin ({} bytes) directly into component images",
                     size
                 );
-                components = Some(unpack_reader(
+                components = Some(unpack_reader_with_callback(
                     &mut entry,
                     Some(size),
                     &images_dir,
                     layout,
                     force,
+                    &mut on_component_written,
                 )?);
             } else {
                 extract_zip_entry(&mut entry, &package_dir, &enclosed, force)?;
@@ -521,19 +566,9 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
 
     let selected = select_partitions(&components, partitions, all_erofs, &images_dir)?;
     let explicitly_selected = !partitions.is_empty();
-    let mut unpacked_erofs = Vec::new();
-    let mut unpacked_ramdisks = Vec::new();
     for component in selected {
         let image = images_dir.join(&component.output_name);
-        if erofs::is_erofs(&image)? {
-            let workspace = partitions_dir.join(&component.name);
-            erofs::unpack(&image, &workspace, force)?;
-            unpacked_erofs.push(component.name.clone());
-        } else if is_harmony_ramdisk(&image)? {
-            let workspace = partitions_dir.join(&component.name);
-            unpack_ramdisk(&image, &workspace, force)?;
-            unpacked_ramdisks.push(component.name.clone());
-        } else {
+        if !erofs::is_erofs(&image)? && !is_harmony_ramdisk(&image)? {
             let message = format!(
                 "partition {} is neither EROFS nor a recognized HARMONY ramdisk; its image remains at {}",
                 component.name,
@@ -546,6 +581,11 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
             }
         }
     }
+
+    let PartitionUnpackResult {
+        unpacked_erofs,
+        unpacked_ramdisks,
+    } = partition_worker.finish()?;
 
     let manifest = PackageManifest {
         version: 1,
@@ -608,6 +648,151 @@ fn extract_zip_entry<R: io::Read>(
     Ok(())
 }
 
+enum PartitionTask {
+    Erofs {
+        name: String,
+        image: PathBuf,
+        workspace: PathBuf,
+        force: bool,
+    },
+    Ramdisk {
+        name: String,
+        image: PathBuf,
+        workspace: PathBuf,
+        force: bool,
+    },
+}
+
+fn partition_task(
+    component: &Component,
+    image: &Path,
+    requested_names: &HashSet<String>,
+    all_erofs: bool,
+    partitions_dir: &Path,
+    force: bool,
+) -> Result<Option<PartitionTask>> {
+    let eligible = if all_erofs || requested_names.is_empty() {
+        component.component_type == 0
+    } else {
+        requested_names.contains(&component.name)
+    };
+    if !eligible {
+        return Ok(None);
+    }
+
+    let workspace = partitions_dir.join(&component.name);
+    if erofs::is_erofs(image)? {
+        return Ok(Some(PartitionTask::Erofs {
+            name: component.name.clone(),
+            image: image.to_owned(),
+            workspace,
+            force,
+        }));
+    }
+    if all_erofs {
+        return Ok(None);
+    }
+    if is_harmony_ramdisk(image)? {
+        return Ok(Some(PartitionTask::Ramdisk {
+            name: component.name.clone(),
+            image: image.to_owned(),
+            workspace,
+            force,
+        }));
+    }
+    Ok(None)
+}
+
+struct PartitionUnpackResult {
+    unpacked_erofs: Vec<String>,
+    unpacked_ramdisks: Vec<String>,
+}
+
+struct PartitionUnpackWorker {
+    sender: Option<Sender<PartitionTask>>,
+    handle: Option<JoinHandle<Result<PartitionUnpackResult>>>,
+}
+
+impl PartitionUnpackWorker {
+    fn new() -> Result<Self> {
+        let (sender, receiver) = mpsc::channel();
+        // Keep one consumer: EROFS extraction already uses its own worker
+        // threads, and multiple consumers would oversubscribe the disk/CPU.
+        let handle = thread::Builder::new()
+            .name("package-partition-unpack".to_owned())
+            .spawn(move || {
+                let mut unpacked_erofs = Vec::new();
+                let mut unpacked_ramdisks = Vec::new();
+                let mut first_error = None;
+
+                for task in receiver {
+                    let result = match task {
+                        PartitionTask::Erofs {
+                            name,
+                            image,
+                            workspace,
+                            force,
+                        } => erofs::unpack(&image, &workspace, force)
+                            .map(|()| unpacked_erofs.push(name)),
+                        PartitionTask::Ramdisk {
+                            name,
+                            image,
+                            workspace,
+                            force,
+                        } => unpack_ramdisk(&image, &workspace, force)
+                            .map(|()| unpacked_ramdisks.push(name)),
+                    };
+                    if let Err(error) = result {
+                        if first_error.is_none() {
+                            first_error = Some(error);
+                        }
+                    }
+                }
+
+                match first_error {
+                    Some(error) => Err(error),
+                    None => Ok(PartitionUnpackResult {
+                        unpacked_erofs,
+                        unpacked_ramdisks,
+                    }),
+                }
+            })
+            .context("starting background partition unpack worker")?;
+        Ok(Self {
+            sender: Some(sender),
+            handle: Some(handle),
+        })
+    }
+
+    fn submit(&self, task: PartitionTask) -> Result<()> {
+        self.sender
+            .as_ref()
+            .context("partition unpack worker is closed")?
+            .send(task)
+            .map_err(|_| anyhow!("background partition unpack worker stopped"))
+    }
+
+    fn finish(mut self) -> Result<PartitionUnpackResult> {
+        drop(self.sender.take());
+        let handle = self
+            .handle
+            .take()
+            .expect("partition unpack worker handle missing");
+        handle
+            .join()
+            .map_err(|_| anyhow!("background partition unpack worker panicked"))?
+    }
+}
+
+impl Drop for PartitionUnpackWorker {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 fn select_partitions<'a>(
     components: &'a [Component],
     requested: &[String],
@@ -650,6 +835,17 @@ fn select_partitions<'a>(
         }
     }
     Ok(selected)
+}
+
+fn requested_partition_names(requested: &[String]) -> Result<HashSet<String>> {
+    requested
+        .iter()
+        .map(|raw_name| {
+            let name = raw_name.strip_suffix(".img").unwrap_or(raw_name);
+            validate_partition_name(name)?;
+            Ok(name.to_owned())
+        })
+        .collect()
 }
 
 fn is_harmony_ramdisk(path: &Path) -> Result<bool> {
