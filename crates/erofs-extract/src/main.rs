@@ -1,17 +1,27 @@
+// The upstream-compatible extractor retains format definitions and helpers for
+// EROFS features that are parsed but not yet exposed by the public API.
+#[allow(dead_code)]
 mod config;
+#[allow(dead_code)]
 mod data;
 mod decompress;
 mod dir;
+#[allow(dead_code)]
 mod erofs_fs;
 mod error;
+#[allow(dead_code)]
 mod extract;
 mod fragments;
 mod inode;
+#[allow(dead_code)]
 mod io;
 mod log;
 mod node;
+#[allow(dead_code)]
 mod platform;
+#[allow(dead_code)]
 mod sb;
+#[allow(dead_code)]
 mod xattr;
 mod zmap;
 

@@ -58,14 +58,12 @@ pub(crate) fn create_dirs(path: &str, _mode: u32) -> io::Result<()> {
 }
 
 pub(crate) fn open_output_file(path: &str, overwrite: bool) -> io::Result<File> {
-    if overwrite {
-        if let Ok(metadata) = std::fs::symlink_metadata(path) {
-            if metadata.is_dir() {
-                return Err(io::Error::from(io::ErrorKind::IsADirectory));
-            }
-            if metadata.file_type().is_symlink() {
-                std::fs::remove_file(path)?;
-            }
+    if overwrite && let Ok(metadata) = std::fs::symlink_metadata(path) {
+        if metadata.is_dir() {
+            return Err(io::Error::from(io::ErrorKind::IsADirectory));
+        }
+        if metadata.file_type().is_symlink() {
+            std::fs::remove_file(path)?;
         }
     }
 
