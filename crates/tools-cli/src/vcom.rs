@@ -4,6 +4,7 @@ use hisi_vcom::vcom;
 use std::cell::Cell;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
+use std::num::NonZeroU64;
 use std::path::Path;
 
 pub fn devices() -> Result<()> {
@@ -64,12 +65,11 @@ fn print_progress(sent: u64, total: u64) {
     const BAR_WIDTH: usize = 30;
 
     let sent = sent.min(total);
-    let percent = if total == 0 { 100 } else { sent * 100 / total };
-    let filled = if total == 0 {
-        BAR_WIDTH
-    } else {
-        (sent * BAR_WIDTH as u64 / total) as usize
-    };
+    let total_nonzero = NonZeroU64::new(total);
+    let percent = total_nonzero.map_or(100, |total| sent.saturating_mul(100) / total.get());
+    let filled = total_nonzero.map_or(BAR_WIDTH, |total| {
+        (sent.saturating_mul(BAR_WIDTH as u64) / total.get()) as usize
+    });
     let bar = format!("{}{}", "#".repeat(filled), "-".repeat(BAR_WIDTH - filled));
 
     print!("\r  [{bar}] {percent:3}%  {sent}/{total} bytes");
