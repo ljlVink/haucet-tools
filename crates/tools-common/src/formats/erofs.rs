@@ -3,13 +3,14 @@ use crate::fs_util;
 use crate::process::{CommandWindow, configure_command_window};
 use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
+use erofs_extract::{ExtractMode, ExtractOptions};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 const EROFS_MAGIC: [u8; 4] = [0xe2, 0xe1, 0xf5, 0xe0];
 const EROFS_MAGIC_OFFSET: u64 = 1024;
@@ -52,22 +53,6 @@ pub fn is_erofs(path: &Path) -> Result<bool> {
 
 pub fn unpack(image: &Path, out: &Path, force: bool) -> Result<()> {
     fs_util::ensure_output_does_not_contain(image, out)?;
-    let tools = ToolPaths::discover(None)?;
-    unpack_with_tools_window(image, out, &tools, force, CommandWindow::Inherit)
-}
-
-pub fn unpack_with_tools(image: &Path, out: &Path, tools: &ToolPaths, force: bool) -> Result<()> {
-    fs_util::ensure_output_does_not_contain(image, out)?;
-    unpack_with_tools_window(image, out, tools, force, CommandWindow::Hidden)
-}
-
-pub(crate) fn unpack_with_tools_window(
-    image: &Path,
-    out: &Path,
-    tools: &ToolPaths,
-    force: bool,
-    window: CommandWindow,
-) -> Result<()> {
     ensure!(
         is_erofs(image)?,
         "{} is not an EROFS image",
@@ -76,16 +61,8 @@ pub(crate) fn unpack_with_tools_window(
     fs_util::prepare_dir_excluding(out, "EROFS workspace", force, &[image])?;
 
     eprintln!("extracting EROFS image {}", image.display());
-    run_status(
-        Command::new(&tools.extract_erofs)
-            .arg("-x")
-            .arg("-i")
-            .arg(image)
-            .arg("-o")
-            .arg(out),
-        "extract.erofs",
-        window,
-    )?;
+    erofs_extract::extract(image, out, ExtractOptions::default())
+        .context("embedded EROFS extraction failed")?;
 
     let extracted_source_dir = find_source_dir(out)?;
     let extracted_name = extracted_source_dir
@@ -135,8 +112,8 @@ pub(crate) fn unpack_with_tools_window(
         source_dir: relative_string(out, &source_dir)?,
         config_dir: relative_string(out, &config_dir)?,
         fs_options_file: relative_string(out, &fs_options)?,
-        extract_erofs_version: tool_version(&tools.extract_erofs, window),
-        mkfs_erofs_version: tool_version(&tools.mkfs_erofs, window),
+        extract_erofs_version: erofs_extract::VERSION.to_owned(),
+        mkfs_erofs_version: "not queried during unpack".to_owned(),
         hvb,
     };
     write_manifest(out, &manifest)?;
@@ -171,20 +148,22 @@ fn repack_with_tools_window(
     allow_grow: bool,
     window: CommandWindow,
 ) -> Result<()> {
+    let workspace = fs_util::absolute_path(workspace)?;
+    let output = fs_util::absolute_path(output)?;
     ensure!(
         !output.exists(),
         "output already exists: {}",
         output.display()
     );
-    let manifest = read_manifest(workspace)?;
+    let manifest = read_manifest(&workspace)?;
     ensure!(
         manifest.version == MANIFEST_VERSION,
         "unsupported EROFS workspace version {}",
         manifest.version
     );
-    let source_dir = fs_util::safe_join(workspace, &manifest.source_dir)?;
-    let config_dir = fs_util::safe_join(workspace, &manifest.config_dir)?;
-    let fs_options_path = fs_util::safe_join(workspace, &manifest.fs_options_file)?;
+    let source_dir = fs_util::safe_join(&workspace, &manifest.source_dir)?;
+    let config_dir = fs_util::safe_join(&workspace, &manifest.config_dir)?;
+    let fs_options_path = fs_util::safe_join(&workspace, &manifest.fs_options_file)?;
     ensure!(
         source_dir.is_dir(),
         "missing source tree: {}",
@@ -198,8 +177,8 @@ fn repack_with_tools_window(
 
     let parent = output.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
-    let raw_path = fs_util::sibling_temporary(output, "raw-erofs")?;
-    let wrapped_path = fs_util::sibling_temporary(output, "wrapped")?;
+    let raw_path = fs_util::sibling_temporary(&output, "raw-erofs")?;
+    let wrapped_path = fs_util::sibling_temporary(&output, "wrapped")?;
     ensure!(
         !raw_path.exists(),
         "temporary file exists: {}",
@@ -215,17 +194,25 @@ fn repack_with_tools_window(
         let preserved = parse_mkfs_options(&fs_options_path, &config_dir)?;
         eprintln!("rebuilding {} with mkfs.erofs", manifest.partition);
         let mut command = Command::new(&tools.mkfs_erofs);
+        command.arg("-d1");
+        // The bundled Windows mkfs.erofs is a Cygwin binary. Native Windows
+        // symbolic links have no Cygwin xattr stream, so asking mkfs to scan
+        // host xattrs fails before the recorded fs_config/file_contexts can
+        // be applied. Those Android metadata files remain the source of
+        // ownership, modes, capabilities, and SELinux labels.
+        if cfg!(windows) {
+            command.arg("-x-1");
+        }
         command
-            .arg("-d1")
             .args(&preserved)
-            .arg(&raw_path)
-            .arg(&source_dir);
+            .arg(mkfs_path(&raw_path))
+            .arg(mkfs_path(&source_dir));
         run_status(&mut command, "mkfs.erofs", window)?;
         ensure!(is_erofs(&raw_path)?, "mkfs.erofs produced an invalid image");
 
         let raw_size = fs::metadata(&raw_path)?.len();
         if let Some(hvb) = &manifest.hvb {
-            let certificate_path = fs_util::safe_join(workspace, &hvb.certificate_file)?;
+            let certificate_path = fs_util::safe_join(&workspace, &hvb.certificate_file)?;
             let wrapper = HvbWrapper {
                 footer: hvb.footer.clone(),
                 certificate: fs::read(&certificate_path).with_context(|| {
@@ -258,8 +245,8 @@ fn repack_with_tools_window(
         }
 
         ensure!(is_erofs(&wrapped_path)?, "wrapped output is not EROFS");
-        validate_with_extractor(&wrapped_path, workspace, tools, window)?;
-        fs::rename(&wrapped_path, output)
+        validate_with_extractor(&wrapped_path, &workspace)?;
+        fs::rename(&wrapped_path, &output)
             .with_context(|| format!("moving rebuilt image to {}", output.display()))?;
         Ok(())
     })();
@@ -352,7 +339,15 @@ fn parse_mkfs_options(path: &Path, config_dir: &Path) -> Result<Vec<String>> {
                 .map(|(_, value)| value.trim())
         })
         .context("fs_options does not contain a mkfs.erofs command")?;
-    let mut words = shlex::split(line).context("invalid shell quoting in mkfs.erofs options")?;
+    // extract.erofs historically records unquoted Windows paths.  `shlex`
+    // treats their backslashes as POSIX escape characters, so normalize them
+    // before parsing while preserving the generated command's meaning.
+    let line = if cfg!(windows) {
+        line.replace('\\', "/")
+    } else {
+        line.to_owned()
+    };
+    let mut words = shlex::split(&line).context("invalid shell quoting in mkfs.erofs options")?;
     ensure!(
         words.len() >= 2,
         "mkfs.erofs options are missing output/source paths"
@@ -369,7 +364,7 @@ fn parse_mkfs_options(path: &Path, config_dir: &Path) -> Result<Vec<String>> {
                 .context("invalid fs_config path")?;
             let path = config_dir.join(basename);
             ensure!(path.is_file(), "missing fs_config file: {}", path.display());
-            output.push(format!("--fs-config-file={}", path.display()));
+            output.push(format!("--fs-config-file={}", mkfs_path(&path)));
         } else if let Some(original) = word.strip_prefix("--file-contexts=") {
             let basename = Path::new(original)
                 .file_name()
@@ -380,7 +375,7 @@ fn parse_mkfs_options(path: &Path, config_dir: &Path) -> Result<Vec<String>> {
                 "missing file_contexts file: {}",
                 path.display()
             );
-            output.push(format!("--file-contexts={}", path.display()));
+            output.push(format!("--file-contexts={}", mkfs_path(&path)));
         } else if option_with_inline_value(word) || flag_option(word) {
             output.push(word.clone());
         } else if matches!(word.as_str(), "-T" | "-U" | "-L") {
@@ -423,34 +418,45 @@ fn flag_option(option: &str) -> bool {
     )
 }
 
-fn validate_with_extractor(
-    image: &Path,
-    workspace: &Path,
-    tools: &ToolPaths,
-    window: CommandWindow,
-) -> Result<()> {
+fn mkfs_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if cfg!(windows) {
+        let path = path.replace('\\', "/");
+        let bytes = path.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && bytes[2] == b'/'
+        {
+            format!(
+                "/cygdrive/{}/{}",
+                (bytes[0] as char).to_ascii_lowercase(),
+                &path[3..]
+            )
+        } else {
+            path
+        }
+    } else {
+        path.into_owned()
+    }
+}
+
+fn validate_with_extractor(image: &Path, workspace: &Path) -> Result<()> {
     let validation = workspace.join(".haucet-validation");
     if validation.exists() {
         fs::remove_dir_all(&validation)?;
     }
-    fs::create_dir_all(&validation)?;
-    let mut command = Command::new(&tools.extract_erofs);
-    command
-        .arg("-x")
-        .arg("--only-cfg")
-        .arg("-i")
-        .arg(image)
-        .arg("-o")
-        .arg(&validation)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    configure_command_window(&mut command, window);
-    let status = command
-        .status()
-        .context("running extract.erofs validation")?;
+    let result = erofs_extract::extract(
+        image,
+        &validation,
+        ExtractOptions {
+            mode: ExtractMode::ConfigOnly,
+            ..ExtractOptions::default()
+        },
+    )
+    .context("embedded EROFS validation failed");
     let _ = fs::remove_dir_all(&validation);
-    ensure!(status.success(), "extract.erofs rejected the rebuilt image");
-    Ok(())
+    result
 }
 
 fn copy_raw_partition(source: &Path, destination: &Path, final_size: u64) -> Result<()> {
@@ -489,20 +495,6 @@ fn sha256_file(path: &Path) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn tool_version(tool: &Path, window: CommandWindow) -> String {
-    let mut command = Command::new(tool);
-    command.arg("--version");
-    configure_command_window(&mut command, window);
-    command
-        .output()
-        .map(|output| {
-            let mut bytes = output.stdout;
-            bytes.extend(output.stderr);
-            String::from_utf8_lossy(&bytes).trim().to_owned()
-        })
-        .unwrap_or_else(|error| format!("unavailable: {error}"))
-}
-
 fn write_manifest(workspace: &Path, manifest: &ErofsManifest) -> Result<()> {
     let path = workspace.join(MANIFEST_NAME);
     let json = serde_json::to_vec_pretty(manifest)?;
@@ -524,4 +516,34 @@ fn relative_string(base: &Path, path: &Path) -> Result<String> {
         .with_context(|| format!("{} is outside {}", path.display(), base.display()))?
         .to_string_lossy()
         .into_owned())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_unquoted_windows_paths_from_fs_options() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("system_fs_config"), []).unwrap();
+        fs::write(config_dir.join("system_file_contexts"), []).unwrap();
+        let options = temp.path().join("system_fs_options");
+        fs::write(
+            &options,
+            "mkfs.erofs options: -zlz4hc --fs-config-file=C:\\old\\config\\system_fs_config --file-contexts=C:\\old\\config\\system_file_contexts system_repack.img C:\\old\\system\n",
+        )
+        .unwrap();
+
+        let parsed = parse_mkfs_options(&options, &config_dir).unwrap();
+        assert!(parsed.contains(&format!(
+            "--fs-config-file={}",
+            mkfs_path(&config_dir.join("system_fs_config"))
+        )));
+        assert!(parsed.contains(&format!(
+            "--file-contexts={}",
+            mkfs_path(&config_dir.join("system_file_contexts"))
+        )));
+    }
 }

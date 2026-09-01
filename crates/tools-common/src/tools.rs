@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct ToolPaths {
-    pub extract_erofs: PathBuf,
     pub mkfs_erofs: PathBuf,
 }
 
@@ -20,7 +19,6 @@ impl ToolPaths {
             None => default_tools_dir()?,
         };
         let paths = Self {
-            extract_erofs: directory.join(format!("extract.erofs{TOOL_SUFFIX}")),
             mkfs_erofs: directory.join(format!("mkfs.erofs{TOOL_SUFFIX}")),
         };
         paths.validate()?;
@@ -28,10 +26,8 @@ impl ToolPaths {
     }
 
     fn validate(&self) -> Result<()> {
-        for path in [&self.extract_erofs, &self.mkfs_erofs] {
-            if !path.is_file() {
-                bail!("required tool was not found: {}", path.display());
-            }
+        if !self.mkfs_erofs.is_file() {
+            bail!("required tool was not found: {}", self.mkfs_erofs.display());
         }
         Ok(())
     }
@@ -53,14 +49,9 @@ fn default_tools_dir() -> Result<PathBuf> {
             .context("resolving bundled EROFS tools");
     }
 
-    bail!(
-        "required EROFS tools were not found in bin/: expected extract.erofs{TOOL_SUFFIX} and mkfs.erofs{TOOL_SUFFIX}"
-    )
+    bail!("required EROFS repacking tool was not found in bin/: expected mkfs.erofs{TOOL_SUFFIX}")
 }
 
 fn has_tools(directory: &Path) -> bool {
-    directory
-        .join(format!("extract.erofs{TOOL_SUFFIX}"))
-        .is_file()
-        && directory.join(format!("mkfs.erofs{TOOL_SUFFIX}")).is_file()
+    directory.join(format!("mkfs.erofs{TOOL_SUFFIX}")).is_file()
 }

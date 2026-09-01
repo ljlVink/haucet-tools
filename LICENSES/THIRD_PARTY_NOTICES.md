@@ -16,6 +16,13 @@ Haucet Tools. It is not a substitute for the referenced license texts.
   upstream code is available under MIT or Apache-2.0. The fork as distributed
   here is GPL-3.0-only; the upstream MIT notice is retained in
   `LICENSES/MIT-fastboot-rs.txt`.
+- `crates/erofs-extract` is the in-process Rust EROFS extraction
+  implementation. Its filesystem-format behavior and extraction workflow are
+  a Rust port informed by [sekaiacg/erofs-tools](https://github.com/sekaiacg/erofs-tools)
+  and upstream [erofs-utils](https://github.com/erofs/erofs-utils). Those
+  upstream projects are GPL-2.0; their license text is retained in
+  `LICENSES/GPL-2.0.txt`. The separately bundled `mkfs.erofs` remains the
+  erofs-utils-compatible external repacking tool.
 - HarmonyOS update package behavior was adapted from
   [OpenHarmony update_packaging_tools](https://gitcode.com/openharmony/update_packaging_tools),
   and HVB behavior was adapted from

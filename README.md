@@ -35,8 +35,9 @@ haucet-tools vcom flash COM3 0x80000000 loader.bin
 
 ## Build
 
-The binary uses `bin/extract.erofs` and `bin/mkfs.erofs` from this
-repository. Keep the binary beside this repository so it can locate `bin/`.
+EROFS extraction is linked into the Rust binary. Repacking still uses the
+bundled external `bin/mkfs.erofs` (or `mkfs.erofs.exe` on Windows), so keep the
+binary beside this repository so it can locate `bin/`.
 
 ```sh
 cargo build --release

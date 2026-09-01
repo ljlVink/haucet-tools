@@ -26,13 +26,11 @@ pub enum JobOp {
         all_erofs: bool,
         layout: UpdateLayout,
         force: bool,
-        tools_dir: Option<String>,
     },
     ErofsUnpack {
         image: String,
         output: String,
         force: bool,
-        tools_dir: Option<String>,
     },
     ErofsRepack {
         workspace: String,
@@ -154,13 +152,10 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             all_erofs,
             layout,
             force,
-            tools_dir,
         } => {
-            let tools = discover_tools(tools_dir)?;
-            package::unpack_full_with_tools(
+            package::unpack_full(
                 Path::new(input),
                 Path::new(output),
-                &tools,
                 partitions,
                 *all_erofs,
                 *layout,
@@ -176,10 +171,8 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             image,
             output,
             force,
-            tools_dir,
         } => {
-            let tools = discover_tools(tools_dir)?;
-            erofs::unpack_with_tools(Path::new(image), Path::new(output), &tools, *force)?;
+            erofs::unpack(Path::new(image), Path::new(output), *force)?;
             let manifest = erofs::read_manifest(Path::new(output))?;
             summary_payload(
                 tr!("worker-erofs-unpacked", "output" => output.clone(), "partition" => manifest.partition.clone()),

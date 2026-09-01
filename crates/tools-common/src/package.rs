@@ -3,8 +3,6 @@ use crate::formats::erofs;
 use crate::formats::harmony::HARMONY_MAGIC;
 use crate::formats::header::{FileFormat, check_fmt};
 use crate::fs_util;
-use crate::process::CommandWindow;
-use crate::tools::ToolPaths;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -437,41 +435,14 @@ pub fn unpack_full(
     force: bool,
 ) -> Result<()> {
     fs_util::ensure_output_does_not_contain(input, out)?;
-    let tools = ToolPaths::discover(None)?;
-    unpack_full_with_tools_window(
+    unpack_full_inner(
         input,
         out,
-        &tools,
         FullUnpackOptions {
             partitions,
             all_erofs,
             layout,
             force,
-            window: CommandWindow::Inherit,
-        },
-    )
-}
-
-pub fn unpack_full_with_tools(
-    input: &Path,
-    out: &Path,
-    tools: &ToolPaths,
-    partitions: &[String],
-    all_erofs: bool,
-    layout: UpdateLayout,
-    force: bool,
-) -> Result<()> {
-    fs_util::ensure_output_does_not_contain(input, out)?;
-    unpack_full_with_tools_window(
-        input,
-        out,
-        tools,
-        FullUnpackOptions {
-            partitions,
-            all_erofs,
-            layout,
-            force,
-            window: CommandWindow::Hidden,
         },
     )
 }
@@ -481,21 +452,14 @@ struct FullUnpackOptions<'a> {
     all_erofs: bool,
     layout: UpdateLayout,
     force: bool,
-    window: CommandWindow,
 }
 
-fn unpack_full_with_tools_window(
-    input: &Path,
-    out: &Path,
-    tools: &ToolPaths,
-    options: FullUnpackOptions<'_>,
-) -> Result<()> {
+fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -> Result<()> {
     let FullUnpackOptions {
         partitions,
         all_erofs,
         layout,
         force,
-        window,
     } = options;
     prepare_output(out, input, force)?;
     let package_dir = out.join("package");
@@ -563,7 +527,7 @@ fn unpack_full_with_tools_window(
         let image = images_dir.join(&component.output_name);
         if erofs::is_erofs(&image)? {
             let workspace = partitions_dir.join(&component.name);
-            erofs::unpack_with_tools_window(&image, &workspace, tools, force, window)?;
+            erofs::unpack(&image, &workspace, force)?;
             unpacked_erofs.push(component.name.clone());
         } else if is_harmony_ramdisk(&image)? {
             let workspace = partitions_dir.join(&component.name);

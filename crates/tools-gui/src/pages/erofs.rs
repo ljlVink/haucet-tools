@@ -37,7 +37,6 @@ pub struct UnpackState {
     pub image: String,
     pub output: String,
     pub force: bool,
-    pub tools_dir: String,
     auto_output: Option<String>,
 }
 
@@ -212,7 +211,6 @@ impl ErofsPage {
                 image: self.unpack.image.trim().to_owned(),
                 output,
                 force: self.unpack.force,
-                tools_dir: trimmed_non_empty(&self.unpack.tools_dir),
             });
         }
     }

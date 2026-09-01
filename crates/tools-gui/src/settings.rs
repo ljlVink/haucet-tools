@@ -1,6 +1,3 @@
-//! Persistent UI settings (last-used paths and options), stored as JSON in
-//! the platform data directory.
-
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

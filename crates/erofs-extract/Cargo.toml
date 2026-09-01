@@ -1,0 +1,27 @@
+[package]
+name = "erofs-extract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Embedded Rust EROFS extractor"
+autobins = false
+
+[lib]
+path = "src/main.rs"
+
+[[bin]]
+name = "extract-erofs"
+path = "src/bin/extract-erofs.rs"
+
+[dependencies]
+libc.workspace = true
+lz4-sys.workspace = true
+sha2.workspace = true
+zstd.workspace = true
+clap.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

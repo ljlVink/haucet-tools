@@ -1,7 +1,7 @@
 use crate::app::HaucetApp;
 use crate::pages::{Page, ResultView, run_button};
 use crate::util::{
-    human_size, message_box, open_in_file_manager, section, sibling_output_path, trimmed_non_empty,
+    human_size, message_box, open_in_file_manager, section, sibling_output_path,
     update_derived_path,
 };
 use common::package::{PackageIndex, UpdateLayout};
@@ -18,7 +18,6 @@ enum PendingOp {
 pub struct PackagePage {
     pub input: String,
     pub output: String,
-    pub tools_dir: String,
     pub layout: UpdateLayout,
     pub force: bool,
     pub all_erofs: bool,
@@ -114,7 +113,6 @@ impl PackagePage {
                             all_erofs: self.all_erofs,
                             layout: self.layout,
                             force: self.force,
-                            tools_dir: trimmed_non_empty(&self.tools_dir),
                         });
                     }
                     if app.job_running() {
