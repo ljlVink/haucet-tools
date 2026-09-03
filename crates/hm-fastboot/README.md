@@ -1,3 +1,3 @@
 # hm-fastboot
 
-TODO: implement fastboot oem emmc-dump ability.
+TODO: implement fastboot oem upload-storage ability.
