@@ -82,6 +82,14 @@ enum FastbootCommand {
         /// Variable name, e.g. `product` or `max-download-size`
         var: String,
     },
+    /// Read a memory range from the device into a file
+    #[command(name = "upload-memory")]
+    UploadMemory {
+        /// Memory range in ADDRESS:LENGTH form, for example 0x100000:0x1000
+        params: String,
+        /// Output file for the received bytes
+        output: PathBuf,
+    },
     /// Flash a raw or sparse image to a partition
     Flash {
         /// Target partition name, e.g. `updater`, `ramdisk`, or `vendor`
@@ -89,8 +97,34 @@ enum FastbootCommand {
         /// Image file to flash
         image: PathBuf,
     },
+    /// Erase a partition
+    Erase {
+        /// Target partition name
+        partition: String,
+    },
+    /// Reboot into the bootloader
+    #[command(name = "reboot-bootloader")]
+    RebootBootloader,
+    /// Reboot into recovery
+    #[command(name = "reboot-recovery")]
+    RebootRecovery,
+    /// Reboot into fastboot
+    #[command(name = "reboot-fastboot")]
+    RebootFastboot,
     /// Reboot the device out of fastboot mode
     Reboot,
+    /// Send an image to the device's download buffer
+    Download {
+        /// Input image file
+        image: PathBuf,
+    },
+    /// Continue booting the device
+    Continue,
+    /// Flash a partition using Huawei's ultraflash protocol
+    Ultraflash {
+        /// Target partition name; omit it to end an active ultraflash session
+        partition: Option<String>,
+    },
     /// Send a vendor-specific OEM command, such as `oem device-info`
     Oem {
         /// OEM command and optional arguments
@@ -439,10 +473,22 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
         match command {
             FastbootCommand::Devices => fastboot::devices().await,
             FastbootCommand::GetVar { var } => fastboot::get_var(&var).await,
+            FastbootCommand::UploadMemory { params, output } => {
+                fastboot::upload_memory(&params, &output).await
+            }
             FastbootCommand::Flash { partition, image } => {
                 fastboot::flash(&partition, &image).await
             }
+            FastbootCommand::Erase { partition } => fastboot::erase(&partition).await,
+            FastbootCommand::RebootBootloader => fastboot::reboot_bootloader().await,
+            FastbootCommand::RebootRecovery => fastboot::reboot_recovery().await,
+            FastbootCommand::RebootFastboot => fastboot::reboot_fastboot().await,
             FastbootCommand::Reboot => fastboot::reboot().await,
+            FastbootCommand::Download { image } => fastboot::download(&image).await,
+            FastbootCommand::Continue => fastboot::continue_boot().await,
+            FastbootCommand::Ultraflash { partition } => {
+                fastboot::ultraflash(partition.as_deref()).await
+            }
             FastbootCommand::Oem { command } => fastboot::oem(&command).await,
         }
     })

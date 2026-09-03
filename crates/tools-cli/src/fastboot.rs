@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, bail};
 use hm_fastboot::nusb::{FlashEvent, NusbFastBoot, clean_device_string, require_single_device};
+use std::fs::File;
+use std::io::{Read, Write};
 use std::path::Path;
 
 pub async fn devices() -> Result<()> {
@@ -47,6 +49,146 @@ pub async fn flash(partition: &str, image: &Path) -> Result<()> {
         .await
         .with_context(|| format!("failed to flash {} to {}", image.display(), partition))?;
     println!("Flash completed");
+    Ok(())
+}
+
+pub async fn download(image: &Path) -> Result<()> {
+    let mut file = File::open(image)
+        .with_context(|| format!("failed to open download image {}", image.display()))?;
+    let size = u32::try_from(
+        file.metadata()
+            .with_context(|| format!("failed to stat download image {}", image.display()))?
+            .len(),
+    )
+    .with_context(|| format!("download image is larger than 4 GiB: {}", image.display()))?;
+
+    let mut fb = open_only().await?;
+    let mut sender = fb
+        .download(size)
+        .await
+        .with_context(|| format!("failed to start download of {}", image.display()))?;
+    while sender.left() > 0 {
+        let amount = sender.left().min(1024 * 1024) as usize;
+        let buffer = sender
+            .get_mut_data(amount)
+            .await
+            .context("failed to allocate fastboot download buffer")?;
+        file.read_exact(buffer)
+            .with_context(|| format!("failed to read download image {}", image.display()))?;
+    }
+    sender
+        .finish()
+        .await
+        .with_context(|| format!("failed to finish download of {}", image.display()))?;
+    println!("Downloaded {} ({} bytes)", image.display(), size);
+    Ok(())
+}
+
+pub async fn upload_memory(params: &str, output: &Path) -> Result<()> {
+    let (address, length) = params
+        .split_once(':')
+        .context("upload-memory parameters must be ADDRESS:LENGTH")?;
+    if address.is_empty() || length.is_empty() || length.contains(':') {
+        bail!("upload-memory parameters must be ADDRESS:LENGTH");
+    }
+    parse_hex_u64(address).with_context(|| format!("invalid upload-memory address: {address}"))?;
+    let size =
+        parse_hex_u32(length).with_context(|| format!("invalid upload-memory length: {length}"))?;
+
+    let mut fb = open_only().await?;
+    let data = fb
+        .upload_memory(params, size)
+        .await
+        .with_context(|| format!("failed to upload memory range {params}"))?;
+    let mut file = File::create(output)
+        .with_context(|| format!("failed to create output file {}", output.display()))?;
+    file.write_all(&data)
+        .with_context(|| format!("failed to write output file {}", output.display()))?;
+    println!(
+        "Uploaded memory range {params} to {} ({} bytes)",
+        output.display(),
+        data.len()
+    );
+    Ok(())
+}
+
+fn parse_hex_u32(value: &str) -> Result<u32, std::num::ParseIntError> {
+    let value = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    u32::from_str_radix(value, 16)
+}
+
+fn parse_hex_u64(value: &str) -> Result<u64, std::num::ParseIntError> {
+    let value = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    u64::from_str_radix(value, 16)
+}
+
+pub async fn erase(partition: &str) -> Result<()> {
+    let mut fb = open_only().await?;
+    fb.erase(partition)
+        .await
+        .with_context(|| format!("failed to erase partition {partition}"))?;
+    println!("Erased {partition}");
+    Ok(())
+}
+
+pub async fn reboot_bootloader() -> Result<()> {
+    let mut fb = open_only().await?;
+    fb.reboot_bootloader()
+        .await
+        .context("failed to reboot into bootloader")?;
+    println!("Reboot into bootloader command sent");
+    Ok(())
+}
+
+pub async fn reboot_recovery() -> Result<()> {
+    let mut fb = open_only().await?;
+    fb.reboot_recovery()
+        .await
+        .context("failed to reboot into recovery")?;
+    println!("Reboot into recovery command sent");
+    Ok(())
+}
+
+pub async fn reboot_fastboot() -> Result<()> {
+    let mut fb = open_only().await?;
+    fb.reboot_fastboot()
+        .await
+        .context("failed to reboot into fastboot")?;
+    println!("Reboot into fastboot command sent");
+    Ok(())
+}
+
+pub async fn continue_boot() -> Result<()> {
+    let mut fb = open_only().await?;
+    fb.continue_boot()
+        .await
+        .context("failed to send continue command")?;
+    println!("Continue command sent");
+    Ok(())
+}
+
+pub async fn ultraflash(partition: Option<&str>) -> Result<()> {
+    let mut fb = open_only().await?;
+    match partition {
+        Some(partition) => {
+            fb.ultraflash(partition)
+                .await
+                .with_context(|| format!("failed to start ultraflash for partition {partition}"))?;
+            println!("Ultraflash mode started for {partition}");
+        }
+        None => {
+            fb.ultraflash_stop()
+                .await
+                .context("failed to stop ultraflash mode")?;
+            println!("Ultraflash mode stopped");
+        }
+    }
     Ok(())
 }
 

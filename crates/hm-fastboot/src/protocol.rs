@@ -30,6 +30,7 @@ pub fn parse_u64_hex(hex: &str) -> Result<u64, ParseIntError> {
 #[derive(Debug)]
 pub enum FastBootCommand<S> {
     GetVar(S),
+    UploadMemory(S),
     Download(u32),
     Verify(u32),
     Flash(S),
@@ -38,8 +39,13 @@ pub enum FastBootCommand<S> {
     Continue,
     Reboot,
     RebootBootloader,
+    RebootRecovery,
+    RebootFastboot,
     RebootTo(S),
     Powerdown,
+    Ultraflash(S),
+    /// End an active ultraflash session (the command has no parameters).
+    UltraflashStop,
     Oem(S),
 }
 
@@ -47,6 +53,7 @@ impl<S: Display> Display for FastBootCommand<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FastBootCommand::GetVar(var) => write!(f, "getvar:{var}"),
+            FastBootCommand::UploadMemory(params) => write!(f, "upload_memory:{params}"),
             FastBootCommand::Download(size) => write!(f, "download:{size:08x}"),
             FastBootCommand::Verify(part) => write!(f, "verity:{part}"),
             FastBootCommand::Flash(part) => write!(f, "flash:{part}"),
@@ -55,8 +62,12 @@ impl<S: Display> Display for FastBootCommand<S> {
             FastBootCommand::Continue => write!(f, "continue"),
             FastBootCommand::Reboot => write!(f, "reboot"),
             FastBootCommand::RebootBootloader => write!(f, "reboot-bootloader"),
+            FastBootCommand::RebootRecovery => write!(f, "reboot-recovery"),
+            FastBootCommand::RebootFastboot => write!(f, "reboot-fastboot"),
             FastBootCommand::RebootTo(mode) => write!(f, "reboot-{mode}"),
             FastBootCommand::Powerdown => write!(f, "powerdown"),
+            FastBootCommand::Ultraflash(part) => write!(f, "ultraflash:{part}"),
+            FastBootCommand::UltraflashStop => write!(f, "ultraflash"),
             FastBootCommand::Oem(cmd) => write!(f, "oem {cmd}"),
         }
     }

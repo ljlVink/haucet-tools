@@ -13,3 +13,5 @@ proc.txt
 test
 haucet-tools
 haucet*.exe
+loader/
+*.bat

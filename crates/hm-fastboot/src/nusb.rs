@@ -293,6 +293,87 @@ impl NusbFastBoot {
         })
     }
 
+    pub async fn ultraflash(&mut self, target: &str) -> Result<(), NusbFastBootError> {
+        let cmd = FastBootCommand::Ultraflash(target);
+        self.execute(cmd).await.map(|v| {
+            trace!("Ultraflash ok: {v}");
+        })
+    }
+
+    pub async fn ultraflash_stop(&mut self) -> Result<(), NusbFastBootError> {
+        self.execute(FastBootCommand::<&str>::UltraflashStop)
+            .await
+            .map(|v| {
+                trace!("Ultraflash stop ok: {v}");
+            })
+    }
+
+    pub async fn reboot_bootloader(&mut self) -> Result<(), NusbFastBootError> {
+        self.execute(FastBootCommand::<&str>::RebootBootloader)
+            .await
+            .map(|v| {
+                trace!("Reboot bootloader ok: {v}");
+            })
+    }
+
+    pub async fn reboot_recovery(&mut self) -> Result<(), NusbFastBootError> {
+        self.execute(FastBootCommand::<&str>::RebootRecovery)
+            .await
+            .map(|v| {
+                trace!("Reboot recovery ok: {v}");
+            })
+    }
+
+    pub async fn reboot_fastboot(&mut self) -> Result<(), NusbFastBootError> {
+        self.execute(FastBootCommand::<&str>::RebootFastboot)
+            .await
+            .map(|v| {
+                trace!("Reboot fastboot ok: {v}");
+            })
+    }
+
+    pub async fn upload_memory(
+        &mut self,
+        params: &str,
+        size: u32,
+    ) -> Result<Vec<u8>, NusbFastBootError> {
+        let cmd = FastBootCommand::UploadMemory(params);
+        self.send_command(cmd).await?;
+
+        loop {
+            match self.read_response().await? {
+                FastBootResponse::Info(i) => info!("info: {i}"),
+                FastBootResponse::Text(t) => info!("Text: {t}"),
+                FastBootResponse::Okay(_) => break,
+                FastBootResponse::Data(_) => {
+                    return Err(NusbFastBootError::FastbootUnexpectedReply);
+                }
+                FastBootResponse::Fail(fail) => {
+                    return Err(NusbFastBootError::FastbootFailed(fail));
+                }
+            }
+        }
+
+        let mut data = Vec::with_capacity(size as usize);
+        while data.len() < size as usize {
+            self.ep_in.submit(Buffer::new(self.max_in));
+            let chunk = self
+                .ep_in
+                .next_complete()
+                .await
+                .into_result()
+                .map_err(NusbFastBootError::Transfer)?;
+            if chunk.is_empty() {
+                return Err(NusbFastBootError::FastbootUnexpectedReply);
+            }
+            let remaining = size as usize - data.len();
+            data.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+        }
+
+        self.handle_responses().await?;
+        Ok(data)
+    }
+
     pub async fn reboot(&mut self) -> Result<(), NusbFastBootError> {
         let cmd = FastBootCommand::<&str>::Reboot;
         self.execute(cmd).await.map(|v| {
