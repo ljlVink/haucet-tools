@@ -1039,17 +1039,14 @@ fn ascii_with_padding_only(data: &[u8]) -> bool {
 }
 
 fn sanitize_preview(data: &[u8]) -> String {
-    let mut output = String::new();
-    for byte in data.iter().take(100) {
+    let mut output = String::with_capacity(data.len());
+    for byte in data {
         if matches!(*byte, 0x20..=0x7e | b'\t') {
             output.push(*byte as char);
         } else {
             use fmt::Write as _;
             let _ = write!(output, "\\x{byte:02x}");
         }
-    }
-    if data.len() > 100 {
-        output.push_str("...");
     }
     output
 }

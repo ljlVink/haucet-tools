@@ -502,8 +502,8 @@ image-version = Версия образа
 random-adjustment = Случайная поправка
 original-file-range = Диапазон исходного файла
 original-file-size = Размер исходного файла
-text-preview = Предпросмотр текста
-copy-preview = Копировать предпросмотр
+text-preview = Текстовое содержимое
+copy-preview = Копировать весь текст
 
 locate-executable-error = Не удалось найти текущий исполняемый файл
 start-worker-error = Не удалось запустить рабочий процесс

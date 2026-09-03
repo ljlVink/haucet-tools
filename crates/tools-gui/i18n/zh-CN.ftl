@@ -502,8 +502,8 @@ image-version = 镜像版本
 random-adjustment = 随机调整
 original-file-range = 原始文件范围
 original-file-size = 原始文件大小
-text-preview = 文本预览
-copy-preview = 复制预览
+text-preview = 文本内容
+copy-preview = 复制全部文本
 
 locate-executable-error = 无法定位当前可执行文件
 start-worker-error = 无法启动后台工作进程

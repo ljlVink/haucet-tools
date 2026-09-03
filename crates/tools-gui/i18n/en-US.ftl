@@ -502,8 +502,8 @@ image-version = Image version
 random-adjustment = Random adjustment
 original-file-range = Original file range
 original-file-size = Original file size
-text-preview = Text preview
-copy-preview = Copy preview
+text-preview = Text content
+copy-preview = Copy all text
 
 locate-executable-error = Unable to locate the current executable
 start-worker-error = Unable to start the worker process
