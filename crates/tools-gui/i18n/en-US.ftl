@@ -174,6 +174,7 @@ custom-partitions-hint = Optional: comma-separated, such as system, vendor. Leav
 only-erofs-partitions = Unpack EROFS partitions only
 package-index-invalid = Unable to parse the update package component index
 package-component-count = {$components} components in the package, including {$images} partition images
+package-version = Package version
 package-partitions = Package partitions
 filter-update-package = Update package
 

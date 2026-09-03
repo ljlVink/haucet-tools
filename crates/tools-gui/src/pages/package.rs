@@ -171,6 +171,13 @@ impl PackagePage {
                     ui.add_space(6.0);
                 }
                 if let Some(index) = self.index.clone() {
+                    if let Some(version) = &index.package_version {
+                        ui.horizontal(|ui| {
+                            ui.strong(format!("{}:", tr!("package-version")));
+                            ui.monospace(version);
+                        });
+                        ui.add_space(6.0);
+                    }
                     self.partition_table(ui, &index);
                 }
             });

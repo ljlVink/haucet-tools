@@ -174,6 +174,7 @@ custom-partitions-hint = Необязательно: через запятую, 
 only-erofs-partitions = Распаковать только разделы EROFS
 package-index-invalid = Не удалось разобрать индекс компонентов пакета обновления
 package-component-count = Компонентов в пакете: {$components}; образов разделов: {$images}
+package-version = Версия пакета
 package-partitions = Разделы в пакете
 filter-update-package = Пакет обновления
 

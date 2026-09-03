@@ -26,6 +26,7 @@ const L1_ADDRESS_LEN: usize = 16;
 const L2_ADDRESS_LEN: usize = 32;
 const MAX_COMPONENTS: usize = 4096;
 const MAX_METADATA_TLV: u64 = 512 * 1024 * 1024;
+const MAX_PACKAGE_VERSION_SIZE: u64 = 64 * 1024;
 const IO_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +94,8 @@ pub struct PackageIndex {
     pub layout: UpdateLayout,
     pub data_offset: u64,
     pub components: Vec<Component>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_version: Option<String>,
 }
 
 pub fn unpack_reader<R: Read>(
@@ -195,6 +198,7 @@ pub fn read_index<R: Read>(
         layout,
         data_offset: offset,
         components,
+        package_version: None,
     })
 }
 
@@ -296,6 +300,7 @@ fn validate_component_name(name: &str) -> Result<()> {
 fn output_name(name: &str, component_type: u8) -> String {
     match name {
         "version_list" => "VERSION.mbn".to_owned(),
+        "software_ver_list" => "SOFTWARE_VER_LIST.mbn".to_owned(),
         "board_list" => "BOARD.list".to_owned(),
         _ if component_type == 0 => format!("{name}.img"),
         _ if component_type == 1 => format!("{name}.zip"),
@@ -425,32 +430,129 @@ pub fn inspect(input: &Path, layout: UpdateLayout) -> Result<PackageIndex> {
         let file = File::open(input)
             .with_context(|| format!("opening update package {}", input.display()))?;
         let length = file.metadata()?.len();
-        return read_index(
-            &mut BufReader::with_capacity(IO_BUFFER_SIZE, file),
-            Some(length),
-            layout,
-        );
+        let mut reader = BufReader::with_capacity(IO_BUFFER_SIZE, file);
+        let mut index = read_index(&mut reader, Some(length), layout)?;
+        index.package_version = read_component_package_version(&mut reader, &index.components)?;
+        return Ok(index);
     }
 
     let file =
         File::open(input).with_context(|| format!("opening Huawei package {}", input.display()))?;
     let mut archive = ZipArchive::new(file).context("opening ZIP/ZIP64 archive")?;
-    let mut index = None;
+    let mut update_entry_index = None;
+    let mut version_entry_indices = [None, None];
     for entry_index in 0..archive.len() {
-        let mut entry = archive.by_index(entry_index)?;
+        let entry = archive.by_index(entry_index)?;
         let enclosed = entry
             .enclosed_name()
             .with_context(|| format!("unsafe ZIP entry name {:?}", entry.name()))?;
-        if enclosed.file_name() == Some(OsStr::new("update.bin")) {
+        let Some(file_name) = enclosed.file_name().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if file_name.eq_ignore_ascii_case("update.bin") {
             ensure!(
-                index.is_none(),
+                update_entry_index.is_none(),
                 "archive contains multiple update.bin entries"
             );
-            let size = entry.size();
-            index = Some(read_index(&mut entry, Some(size), layout)?);
+            update_entry_index = Some(entry_index);
+        }
+        if let Some(rank) = package_version_name_rank(file_name) {
+            version_entry_indices[rank].get_or_insert(entry_index);
         }
     }
-    index.context("archive does not contain update.bin")
+
+    let mut package_version = None;
+    for entry_index in version_entry_indices.into_iter().flatten() {
+        let mut entry = archive.by_index(entry_index)?;
+        let size = entry.size();
+        if let Some(version) = read_package_version(&mut entry, size)? {
+            package_version = Some(version);
+            break;
+        }
+    }
+
+    let update_entry_index = update_entry_index.context("archive does not contain update.bin")?;
+    let mut entry = archive.by_index(update_entry_index)?;
+    let size = entry.size();
+    let mut index = read_index(&mut entry, Some(size), layout)?;
+    if package_version.is_none() {
+        package_version = read_component_package_version(&mut entry, &index.components)?;
+    }
+    index.package_version = package_version;
+    Ok(index)
+}
+
+fn read_component_package_version<R: Read>(
+    reader: &mut R,
+    components: &[Component],
+) -> Result<Option<String>> {
+    let Some((component_index, component)) = components
+        .iter()
+        .enumerate()
+        .filter_map(|(index, component)| {
+            package_version_component_rank(component).map(|rank| (rank, index, component))
+        })
+        .min_by_key(|(rank, index, _)| (*rank, *index))
+        .map(|(_, index, component)| (index, component))
+    else {
+        return Ok(None);
+    };
+
+    for preceding in &components[..component_index] {
+        skip_exact(reader, preceding.size).with_context(|| {
+            format!(
+                "skipping component {} before package version",
+                preceding.output_name
+            )
+        })?;
+    }
+    read_package_version(reader, component.size)
+        .with_context(|| format!("reading package version from {}", component.output_name))
+}
+
+fn package_version_component_rank(component: &Component) -> Option<usize> {
+    package_version_name_rank(&component.output_name)
+        .or_else(|| package_version_name_rank(&component.name))
+        .or_else(|| {
+            if component.name.eq_ignore_ascii_case("version_list") {
+                Some(0)
+            } else if component.name.eq_ignore_ascii_case("software_ver_list") {
+                Some(1)
+            } else {
+                None
+            }
+        })
+}
+
+fn package_version_name_rank(name: &str) -> Option<usize> {
+    if name.eq_ignore_ascii_case("VERSION.mbn") {
+        Some(0)
+    } else if name.eq_ignore_ascii_case("SOFTWARE_VER_LIST.mbn") {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+fn read_package_version<R: Read>(reader: &mut R, length: u64) -> Result<Option<String>> {
+    if length == 0 || length > MAX_PACKAGE_VERSION_SIZE {
+        return Ok(None);
+    }
+    let length = usize::try_from(length).context("package version file is too large")?;
+    let mut bytes = vec![0_u8; length];
+    reader.read_exact(&mut bytes)?;
+    Ok(decode_package_version(&bytes))
+}
+
+fn decode_package_version(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let version = text
+        .trim_start_matches('\u{feff}')
+        .split(|character: char| character == '\0' || character.is_whitespace())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!version.is_empty()).then_some(version)
 }
 
 pub fn unpack_full(

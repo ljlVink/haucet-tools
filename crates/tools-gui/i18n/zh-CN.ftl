@@ -174,6 +174,7 @@ custom-partitions-hint = 可选：以逗号分隔，如 system, vendor；留空�
 only-erofs-partitions = 只解包 EROFS 分区
 package-index-invalid = 无法解析更新包组件索引
 package-component-count = 包内共 {$components} 个组件，{$images} 个分区镜像
+package-version = 包版本号
 package-partitions = 包内分区
 filter-update-package = 更新包
 
