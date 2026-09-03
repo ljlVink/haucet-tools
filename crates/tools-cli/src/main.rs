@@ -90,7 +90,7 @@ enum FastbootCommand {
         /// Output file for the received bytes
         output: PathBuf,
     },
-    /// Flash a raw or sparse image to a partition
+    /// Flash an image, using ultraflash automatically when supported
     Flash {
         /// Target partition name, e.g. `updater`, `ramdisk`, or `vendor`
         partition: String,
@@ -113,18 +113,8 @@ enum FastbootCommand {
     RebootFastboot,
     /// Reboot the device out of fastboot mode
     Reboot,
-    /// Send an image to the device's download buffer
-    Download {
-        /// Input image file
-        image: PathBuf,
-    },
     /// Continue booting the device
     Continue,
-    /// Flash a partition using Huawei's ultraflash protocol
-    Ultraflash {
-        /// Target partition name; omit it to end an active ultraflash session
-        partition: Option<String>,
-    },
     /// Send a vendor-specific OEM command, such as `oem device-info`
     Oem {
         /// OEM command and optional arguments
@@ -484,11 +474,7 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
             FastbootCommand::RebootRecovery => fastboot::reboot_recovery().await,
             FastbootCommand::RebootFastboot => fastboot::reboot_fastboot().await,
             FastbootCommand::Reboot => fastboot::reboot().await,
-            FastbootCommand::Download { image } => fastboot::download(&image).await,
             FastbootCommand::Continue => fastboot::continue_boot().await,
-            FastbootCommand::Ultraflash { partition } => {
-                fastboot::ultraflash(partition.as_deref()).await
-            }
             FastbootCommand::Oem { command } => fastboot::oem(&command).await,
         }
     })
