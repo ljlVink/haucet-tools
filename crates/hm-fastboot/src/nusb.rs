@@ -338,6 +338,23 @@ impl NusbFastBoot {
         size: u32,
     ) -> Result<Vec<u8>, NusbFastBootError> {
         let cmd = FastBootCommand::UploadMemory(params);
+        self.upload_data(cmd, size).await
+    }
+
+    pub async fn upload_storage(
+        &mut self,
+        params: &str,
+        size: u32,
+    ) -> Result<Vec<u8>, NusbFastBootError> {
+        let cmd = FastBootCommand::UploadStorage(params);
+        self.upload_data(cmd, size).await
+    }
+
+    async fn upload_data<S: Display>(
+        &mut self,
+        cmd: FastBootCommand<S>,
+        size: u32,
+    ) -> Result<Vec<u8>, NusbFastBootError> {
         self.send_command(cmd).await?;
 
         loop {

@@ -90,6 +90,14 @@ enum FastbootCommand {
         /// Output file for the received bytes
         output: PathBuf,
     },
+    /// Read a raw storage range from the device into a file
+    #[command(name = "upload-storage")]
+    UploadStorage {
+        /// Storage range in OFFSET:LENGTH form, for example 0x0:0x1000
+        params: String,
+        /// Output file for the received bytes
+        output: PathBuf,
+    },
     /// Flash an image, using ultraflash automatically when supported
     Flash {
         /// Target partition name, e.g. `updater`, `ramdisk`, or `vendor`
@@ -465,6 +473,9 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
             FastbootCommand::GetVar { var } => fastboot::get_var(&var).await,
             FastbootCommand::UploadMemory { params, output } => {
                 fastboot::upload_memory(&params, &output).await
+            }
+            FastbootCommand::UploadStorage { params, output } => {
+                fastboot::upload_storage(&params, &output).await
             }
             FastbootCommand::Flash { partition, image } => {
                 fastboot::flash(&partition, &image).await

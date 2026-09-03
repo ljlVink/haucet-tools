@@ -31,6 +31,7 @@ pub fn parse_u64_hex(hex: &str) -> Result<u64, ParseIntError> {
 pub enum FastBootCommand<S> {
     GetVar(S),
     UploadMemory(S),
+    UploadStorage(S),
     Download(u32),
     Verify(u32),
     Flash(S),
@@ -54,6 +55,7 @@ impl<S: Display> Display for FastBootCommand<S> {
         match self {
             FastBootCommand::GetVar(var) => write!(f, "getvar:{var}"),
             FastBootCommand::UploadMemory(params) => write!(f, "upload_memory:{params}"),
+            FastBootCommand::UploadStorage(params) => write!(f, "upload_storage:{params}"),
             FastBootCommand::Download(size) => write!(f, "download:{size:08x}"),
             FastBootCommand::Verify(part) => write!(f, "verity:{part}"),
             FastBootCommand::Flash(part) => write!(f, "flash:{part}"),

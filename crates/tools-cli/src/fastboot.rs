@@ -143,6 +143,34 @@ pub async fn upload_memory(params: &str, output: &Path) -> Result<()> {
     Ok(())
 }
 
+pub async fn upload_storage(params: &str, output: &Path) -> Result<()> {
+    let (offset, length) = params
+        .split_once(':')
+        .context("upload-storage parameters must be OFFSET:LENGTH")?;
+    if offset.is_empty() || length.is_empty() || length.contains(':') {
+        bail!("upload-storage parameters must be OFFSET:LENGTH");
+    }
+    parse_hex_u64(offset).with_context(|| format!("invalid upload-storage offset: {offset}"))?;
+    let size = parse_hex_u32(length)
+        .with_context(|| format!("invalid upload-storage length: {length}"))?;
+
+    let mut fb = open_only().await?;
+    let data = fb
+        .upload_storage(params, size)
+        .await
+        .with_context(|| format!("failed to upload storage range {params}"))?;
+    let mut file = File::create(output)
+        .with_context(|| format!("failed to create output file {}", output.display()))?;
+    file.write_all(&data)
+        .with_context(|| format!("failed to write output file {}", output.display()))?;
+    println!(
+        "Uploaded storage range {params} to {} ({} bytes)",
+        output.display(),
+        data.len()
+    );
+    Ok(())
+}
+
 fn parse_hex_u32(value: &str) -> Result<u32, std::num::ParseIntError> {
     let value = value
         .strip_prefix("0x")
