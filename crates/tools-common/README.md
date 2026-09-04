@@ -1,3 +1,3 @@
 # tools-common
 
-Commoon library for haucet-tools.
+Commoon library for haucet.

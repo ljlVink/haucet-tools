@@ -2,11 +2,11 @@
 name = "cli"
 version.workspace = true
 edition.workspace = true
-description = "Command-line interface for haucet-tools"
+description = "Command-line interface for haucet"
 license.workspace = true
 
 [[bin]]
-name = "haucet-tools"
+name = "haucet"
 path = "src/main.rs"
 
 [dependencies]

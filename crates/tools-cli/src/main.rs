@@ -14,7 +14,7 @@ mod vcom;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "haucet-tools",
+    name = "haucet",
     version = common::version::VERSION,
     about,
     arg_required_else_help = true

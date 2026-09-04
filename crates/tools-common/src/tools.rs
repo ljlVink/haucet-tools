@@ -34,7 +34,7 @@ impl ToolPaths {
 }
 
 fn default_tools_dir() -> Result<PathBuf> {
-    let executable = env::current_exe().context("locating the haucet-tools executable")?;
+    let executable = env::current_exe().context("locating the haucet executable")?;
     for ancestor in executable.ancestors() {
         let candidate = ancestor.join("bin");
         if has_tools(&candidate) {

@@ -8,7 +8,7 @@ use eframe::egui;
 use std::path::PathBuf;
 
 const LICENSE_SPDX: &str = env!("CARGO_PKG_LICENSE");
-const REPOSITORY_URL: &str = "https://github.com/ljlVink/haucet-tools";
+const REPOSITORY_URL: &str = "https://github.com/ljlVink/haucet";
 
 pub(crate) struct HaucetApp {
     pub current: Page,

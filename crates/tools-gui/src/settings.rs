@@ -52,7 +52,7 @@ impl Settings {
 
 fn path() -> PathBuf {
     let mut dir = data_dir();
-    dir.push("haucet-tools-gui");
+    dir.push("haucet-gui");
     let _ = std::fs::create_dir_all(&dir);
     dir.push("settings.json");
     dir

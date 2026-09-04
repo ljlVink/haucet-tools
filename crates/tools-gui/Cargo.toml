@@ -2,11 +2,11 @@
 name = "gui"
 version.workspace = true
 edition.workspace = true
-description = "egui desktop interface for haucet-tools"
+description = "egui desktop interface for haucet"
 license.workspace = true
 
 [[bin]]
-name = "haucet-tools-gui"
+name = "haucet-gui"
 path = "src/main.rs"
 
 [dependencies]

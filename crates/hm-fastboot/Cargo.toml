@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Fastboot protocol implementation for Huawei/HarmonyOS devices (fork of fastboot-rs)"
-repository = "https://github.com/ljlVink/haucet-tools"
+repository = "https://github.com/ljlVink/haucet"
 
 [dependencies]
 bytes = "1"
