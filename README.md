@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/logo.png" width="150" height="150" alt="Haucet Tools" />
+  <img src="assets/logo.png" width="150" height="150" alt="Haucet" />
 </p>
 
 
-<h1 align="center">Haucet Tools</h1>
+<h1 align="center">Haucet</h1>
 
-Haucet Tools is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and maintenance. It unpacks HarmonyOS update packages, inspects and rebuilds EROFS and ramdisk images, edits CPIO archives and NVE data, inspects OEMINFO and partition metadata, flashes images via Fastboot, and uploads loaders via HiSilicon VCOM.
+Haucet is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and maintenance. It unpacks HarmonyOS update packages, inspects and rebuilds EROFS and ramdisk images, edits CPIO archives and NVE data, inspects OEMINFO and partition metadata, flashes images via Fastboot, and uploads loaders via HiSilicon VCOM.
 
 ## Examples
 

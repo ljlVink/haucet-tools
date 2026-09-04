@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 This file records the material shipped with, or used as a direct source for,
-Haucet Tools. It is not a substitute for the referenced license texts.
+Haucet. It is not a substitute for the referenced license texts.
 
 ## Bundled Runtime Components
 
