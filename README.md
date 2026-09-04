@@ -10,29 +10,29 @@ Haucet is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and 
 ## Examples
 
 ```sh
-haucet-tools unpack update.bin --out images
-haucet-tools unpack update_full_base.zip --out work
-haucet-tools unpack update_full_base.zip --out work --partition system --partition vendor
-haucet-tools unpack update_full_base.zip --out work --all-erofs
-haucet-tools erofs unpack system.img --out system-work
-haucet-tools erofs repack system-work --output new-system.img
-haucet-tools ext4 unpack preload.img --out preload-work
-haucet-tools partition-info ramdisk.img # also system.img
-haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
-haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
-haucet-tools partition-info rvt.img
-haucet-tools partition-info ptable.img
-haucet-tools oeminfo oeminfo.img
-haucet-tools oeminfo oeminfo.img --preview
-haucet-tools cpio ramdisk.cpio ls --recursive /
-haucet-tools fastboot devices
-haucet-tools fastboot flash updater updater_vendor.img
-haucet-tools fastboot getvar product
-haucet-tools fastboot extract-part oeminfo oeminfo.img
-haucet-tools fastboot reboot
-haucet-tools fastboot oem device-info
-haucet-tools vcom devices
-haucet-tools vcom flash COM3 0x80000000 loader.bin
+haucet unpack update.bin --out images
+haucet unpack update_full_base.zip --out work
+haucet unpack update_full_base.zip --out work --partition system --partition vendor
+haucet unpack update_full_base.zip --out work --all-erofs
+haucet erofs unpack system.img --out system-work
+haucet erofs repack system-work --output new-system.img
+haucet ext4 unpack preload.img --out preload-work
+haucet partition-info ramdisk.img # also system.img
+haucet ramdisk unpack ramdisk.img --out ramdisk-work
+haucet ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
+haucet partition-info rvt.img
+haucet partition-info ptable.img
+haucet oeminfo oeminfo.img
+haucet oeminfo oeminfo.img --preview
+haucet cpio ramdisk.cpio ls --recursive /
+haucet fastboot devices
+haucet fastboot flash updater updater_vendor.img
+haucet fastboot getvar product
+haucet fastboot extract-part oeminfo oeminfo.img
+haucet fastboot reboot
+haucet fastboot oem device-info
+haucet vcom devices
+haucet vcom flash COM3 0x80000000 loader.bin
 ```
 
 ## Build
@@ -47,7 +47,7 @@ cargo build --release
 
 ## Signing Warning
 
-Repacking changes filesystem or ramdisk bytes. `haucet-tools` preserves the original HVB certificate but cannot cryptographically re-sign it without the device/vendor signing key. A rebuilt image may be rejected by secure boot even when its filesystem and wrapper are structurally valid.
+Repacking changes filesystem or ramdisk bytes. `haucet` preserves the original HVB certificate but cannot cryptographically re-sign it without the device/vendor signing key. A rebuilt image may be rejected by secure boot even when its filesystem and wrapper are structurally valid.
 
 The initial release rebuilds partition images. It does not create a newly signed `update.bin` or `update_full_base.zip`.
 

@@ -11,7 +11,7 @@ agents.md
 *.img
 proc.txt
 test
-haucet-tools
+haucet
 haucet*.exe
 loader/
 *.bat

@@ -191,7 +191,7 @@
 必须先查询一个确定存在的分区：
 
 ```bash
-haucet-tools fastboot get-var storage:oeminfo
+haucet fastboot get-var storage:oeminfo
 # storage:oeminfo: 0000000001000000:0000000006000000
 ```
 
@@ -217,9 +217,9 @@ haucet-tools fastboot get-var storage:oeminfo
 
 
 ```bash
-haucet-tools fastboot get-var storage:oeminfo
-haucet-tools fastboot upload-storage 0x1000000:0x6000000 oeminfo.img
-haucet-tools oeminfo oeminfo.img
+haucet fastboot get-var storage:oeminfo
+haucet fastboot upload-storage 0x1000000:0x6000000 oeminfo.img
+haucet oeminfo oeminfo.img
 ```
 
 
@@ -240,8 +240,8 @@ haucet-tools oeminfo oeminfo.img
 )
 
 ```bash
-haucet-tools fastboot get-var storage:oeminfo
-haucet-tools fastboot upload-storage 0x0:0x6000 user-lun-gpt.bin
+haucet fastboot get-var storage:oeminfo
+haucet fastboot upload-storage 0x0:0x6000 user-lun-gpt.bin
 ```
 
 若解析器把逻辑块固定为 512 字节, 它会错误地到 `0x400` 查找分区项, 从而报告“不是 GPT”或得到空表.解析器必须读取介质块大小, 或允许显式指定 `4096`.
@@ -261,7 +261,7 @@ haucet-tools fastboot upload-storage 0x0:0x6000 user-lun-gpt.bin
 
 
 ```bash
-haucet-tools fastboot upload-memory 0x<address>:0x<length> memory.bin
+haucet fastboot upload-memory 0x<address>:0x<length> memory.bin
 ```
 
 #table(
@@ -283,7 +283,7 @@ OEM 扩展命令与 Getvar 变量.
 
 #callout(
   [命令格式],
-  [OEM 命令使用 `haucet-tools fastboot oem <command...>`; 变量查询使用 `haucet-tools fastboot get-var <name>`.下表仅列出末尾的子命令或变量名.],
+  [OEM 命令使用 `haucet fastboot oem <command...>`; 变量查询使用 `haucet fastboot get-var <name>`.下表仅列出末尾的子命令或变量名.],
 )
 
 == OEM 命令速查
@@ -305,7 +305,7 @@ OEM 扩展命令与 Getvar 变量.
 == 锁状态
 
 ```text
-$ haucet-tools fastboot oem lock-state info
+$ haucet fastboot oem lock-state info
 FB LockState: UNLOCKED
 USER LockState: LOCKED
 ```
@@ -322,7 +322,7 @@ USER LockState: LOCKED
 == Root 完整性状态
 
 ```text
-$ haucet-tools fastboot oem check-rootinfo
+$ haucet fastboot oem check-rootinfo
 status        : RS
 version       : v.
 current status: RS
@@ -337,7 +337,7 @@ item: userlock, status: SF, credible: Y
 == Root mode
 
 ```text
-$ haucet-tools fastboot oem get-rootmode
+$ haucet fastboot oem get-rootmode
 ROOTMODE: NO
 ```
 
@@ -361,10 +361,10 @@ Getvar 是查询路径, 但个别 `rescue_*` 变量可能触发模式切换或�
 )
 
 ```text
-$ haucet-tools fastboot get-var dongle_info
+$ haucet fastboot get-var dongle_info
 dongle_info: RSA-4096-PSS,0x????,0x????,0x????,0x????,0x????
 
-$ haucet-tools fastboot get-var rescue_version
+$ haucet fastboot get-var rescue_version
 rescue_version: rescue0.9
 ```
 
