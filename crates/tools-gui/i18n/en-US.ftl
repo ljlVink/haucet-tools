@@ -1,7 +1,7 @@
 fallback-test-english-only = English fallback
 
-app-title-idle = Haucet Tools - Idle
-app-title-running = Haucet Tools - Running {$seconds}s
+app-title-idle = Haucet - Idle
+app-title-running = Haucet - Running {$seconds}s
 font-warning = A font that supports the selected language was not found. Some text may not display correctly.
     Install Noto Sans CJK, Microsoft YaHei, or another suitable font, then restart.
 nav-files-images = Files and images
@@ -61,7 +61,7 @@ job-fastboot-extract = Extract fastboot partition
 job-vcom-status = Detect VCOM device
 job-vcom-flash = Flash VCOM loader
 
-home-welcome = Welcome to Haucet Tools
+home-welcome = Welcome to Haucet
 home-drop-release = Release to identify
 home-drop-prompt = Drop a file or folder here
 home-detection-result = Identification result

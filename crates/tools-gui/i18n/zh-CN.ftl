@@ -1,7 +1,7 @@
 fallback-test-chinese-only = 中文回退
 
-app-title-idle = Haucet Tools - 空闲
-app-title-running = Haucet Tools - 运行中 {$seconds} 秒
+app-title-idle = Haucet - 空闲
+app-title-running = Haucet - 运行中 {$seconds} 秒
 font-warning = 未找到支持所选语言的字体，部分界面文字可能无法显示。
     请安装 Noto Sans CJK、微软雅黑等字体后重启。
 nav-files-images = 文件与镜像
@@ -61,7 +61,7 @@ job-fastboot-extract = 提取 fastboot 分区
 job-vcom-status = 检测 VCOM 设备
 job-vcom-flash = 刷写 VCOM loader
 
-home-welcome = 欢迎使用 Haucet Tools
+home-welcome = 欢迎使用 Haucet
 home-drop-release = 松开以识别文件
 home-drop-prompt = 把文件或文件夹拖到这里
 home-detection-result = 文件识别结果

@@ -3,9 +3,9 @@ fn main() -> std::io::Result<()> {
         let mut resource = winresource::WindowsResource::new();
         resource
             .set_icon("../../assets/logo-icon.ico")
-            .set("FileDescription", "Haucet Tools CLI")
-            .set("ProductName", "Haucet Tools")
-            .set("OriginalFilename", "haucet-tools.exe");
+            .set("FileDescription", "Haucet CLI")
+            .set("ProductName", "Haucet")
+            .set("OriginalFilename", "haucet.exe");
         resource.compile()?;
     }
     Ok(())

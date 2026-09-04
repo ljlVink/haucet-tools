@@ -1,7 +1,7 @@
 fallback-test-russian-only = Русский резерв
 
-app-title-idle = Haucet Tools - Ожидание
-app-title-running = Haucet Tools - Выполняется, {$seconds} с
+app-title-idle = Haucet - Ожидание
+app-title-running = Haucet - Выполняется, {$seconds} с
 font-warning = Не найден шрифт с поддержкой выбранного языка. Часть текста может отображаться неправильно.
     Установите Noto Sans CJK, Microsoft YaHei или другой подходящий шрифт и перезапустите приложение.
 nav-files-images = Файлы и образы
@@ -61,7 +61,7 @@ job-fastboot-extract = Извлечение раздела fastboot
 job-vcom-status = Поиск устройства VCOM
 job-vcom-flash = Прошивка загрузчика VCOM
 
-home-welcome = Добро пожаловать в Haucet Tools
+home-welcome = Добро пожаловать в Haucet
 home-drop-release = Отпустите для распознавания
 home-drop-prompt = Перетащите сюда файл или папку
 home-detection-result = Результат распознавания

@@ -38,7 +38,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Haucet Tools",
+        "Haucet",
         options,
         Box::new(|cc| {
             let font_loaded = fonts::install_cjk_font(&cc.egui_ctx);
