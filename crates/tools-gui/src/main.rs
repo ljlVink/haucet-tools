@@ -25,7 +25,7 @@ fn main() -> eframe::Result<()> {
     let (icon, logo_rgba) = load_logo();
 
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([1180.0, 800.0])
+        .with_inner_size([1400.0, 1000.0])
         .with_min_inner_size([980.0, 640.0])
         .with_title(tr!("app-title-idle"))
         .with_decorations(true);
