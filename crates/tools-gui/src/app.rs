@@ -511,6 +511,7 @@ fn job_label(op: &JobOp) -> String {
         PackageUnpack { .. } => tr!("job-package-unpack"),
         ErofsUnpack { .. } => tr!("job-erofs-unpack"),
         ErofsRepack { .. } => tr!("job-erofs-repack"),
+        Ext4Unpack { .. } => tr!("job-ext4-unpack"),
         RamdiskUnpack { .. } => tr!("job-ramdisk-unpack"),
         RamdiskRepack { .. } => tr!("job-ramdisk-repack"),
         RamdiskPatch { .. } => tr!("job-ramdisk-patch"),
@@ -530,6 +531,7 @@ fn result_owner(op: &JobOp, current: Page) -> ResultOwner {
         JobOp::ErofsUnpack { .. } | JobOp::ErofsRepack { .. } => {
             ResultOwner::Image(ImageKind::Erofs)
         }
+        JobOp::Ext4Unpack { .. } => ResultOwner::Image(ImageKind::Ext4),
         JobOp::RamdiskUnpack { .. }
         | JobOp::RamdiskRepack { .. }
         | JobOp::RamdiskPatch { .. }

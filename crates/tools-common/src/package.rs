@@ -1,5 +1,6 @@
 use crate::bytes;
 use crate::formats::erofs;
+use crate::formats::ext4;
 use crate::formats::harmony::HARMONY_MAGIC;
 use crate::formats::header::{FileFormat, check_fmt};
 use crate::fs_util;
@@ -422,6 +423,8 @@ struct PackageManifest {
     update_bin_stored: bool,
     components: Vec<Component>,
     unpacked_erofs: Vec<String>,
+    #[serde(default)]
+    unpacked_ext4: Vec<String>,
     unpacked_ramdisks: Vec<String>,
 }
 
@@ -670,9 +673,9 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
     let explicitly_selected = !partitions.is_empty();
     for component in selected {
         let image = images_dir.join(&component.output_name);
-        if !erofs::is_erofs(&image)? && !is_harmony_ramdisk(&image)? {
+        if !erofs::is_erofs(&image)? && !ext4::is_ext4(&image)? && !is_harmony_ramdisk(&image)? {
             let message = format!(
-                "partition {} is neither EROFS nor a recognized HARMONY ramdisk; its image remains at {}",
+                "partition {} is neither EROFS, ext4, nor a recognized HARMONY ramdisk; its image remains at {}",
                 component.name,
                 image.display()
             );
@@ -686,6 +689,7 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
 
     let PartitionUnpackResult {
         unpacked_erofs,
+        unpacked_ext4,
         unpacked_ramdisks,
     } = partition_worker.finish()?;
 
@@ -695,6 +699,7 @@ fn unpack_full_inner(input: &Path, out: &Path, options: FullUnpackOptions<'_>) -
         update_bin_stored: false,
         components,
         unpacked_erofs,
+        unpacked_ext4,
         unpacked_ramdisks,
     };
     let json = serde_json::to_vec_pretty(&manifest)?;
@@ -757,6 +762,12 @@ enum PartitionTask {
         workspace: PathBuf,
         force: bool,
     },
+    Ext4 {
+        name: String,
+        image: PathBuf,
+        output: PathBuf,
+        force: bool,
+    },
     Ramdisk {
         name: String,
         image: PathBuf,
@@ -794,6 +805,14 @@ fn partition_task(
     if all_erofs {
         return Ok(None);
     }
+    if ext4::is_ext4(image)? {
+        return Ok(Some(PartitionTask::Ext4 {
+            name: component.name.clone(),
+            image: image.to_owned(),
+            output: workspace,
+            force,
+        }));
+    }
     if is_harmony_ramdisk(image)? {
         return Ok(Some(PartitionTask::Ramdisk {
             name: component.name.clone(),
@@ -807,6 +826,7 @@ fn partition_task(
 
 struct PartitionUnpackResult {
     unpacked_erofs: Vec<String>,
+    unpacked_ext4: Vec<String>,
     unpacked_ramdisks: Vec<String>,
 }
 
@@ -824,6 +844,7 @@ impl PartitionUnpackWorker {
             .name("package-partition-unpack".to_owned())
             .spawn(move || {
                 let mut unpacked_erofs = Vec::new();
+                let mut unpacked_ext4 = Vec::new();
                 let mut unpacked_ramdisks = Vec::new();
                 let mut first_error = None;
 
@@ -836,6 +857,12 @@ impl PartitionUnpackWorker {
                             force,
                         } => erofs::unpack(&image, &workspace, force)
                             .map(|()| unpacked_erofs.push(name)),
+                        PartitionTask::Ext4 {
+                            name,
+                            image,
+                            output,
+                            force,
+                        } => ext4::unpack(&image, &output, force).map(|_| unpacked_ext4.push(name)),
                         PartitionTask::Ramdisk {
                             name,
                             image,
@@ -844,10 +871,10 @@ impl PartitionUnpackWorker {
                         } => unpack_ramdisk(&image, &workspace, force)
                             .map(|()| unpacked_ramdisks.push(name)),
                     };
-                    if let Err(error) = result {
-                        if first_error.is_none() {
-                            first_error = Some(error);
-                        }
+                    if let Err(error) = result
+                        && first_error.is_none()
+                    {
+                        first_error = Some(error);
                     }
                 }
 
@@ -855,6 +882,7 @@ impl PartitionUnpackWorker {
                     Some(error) => Err(error),
                     None => Ok(PartitionUnpackResult {
                         unpacked_erofs,
+                        unpacked_ext4,
                         unpacked_ramdisks,
                     }),
                 }
@@ -915,7 +943,7 @@ fn select_partitions<'a>(
         let mut selected = Vec::new();
         for component in components.iter().filter(|item| item.component_type == 0) {
             let image = images_dir.join(&component.output_name);
-            if erofs::is_erofs(&image)? || is_harmony_ramdisk(&image)? {
+            if erofs::is_erofs(&image)? || ext4::is_ext4(&image)? || is_harmony_ramdisk(&image)? {
                 selected.push(component);
             }
         }

@@ -1,5 +1,6 @@
 pub mod cpio;
 pub mod erofs;
+pub mod ext4;
 pub mod gpt;
 pub mod harmony;
 pub mod header;

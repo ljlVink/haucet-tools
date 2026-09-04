@@ -16,6 +16,7 @@ pub enum FileKind {
     Unknown,
     ZipPackage,
     Erofs,
+    Ext4,
     HarmonyFrame,
     Rvt,
     Gpt,
@@ -34,6 +35,7 @@ impl FileKind {
             Self::Unknown => tr!("format-unknown"),
             Self::ZipPackage => tr!("format-zip-update"),
             Self::Erofs => tr!("format-erofs-image"),
+            Self::Ext4 => tr!("format-ext4-image"),
             Self::HarmonyFrame => tr!("format-harmony-image"),
             Self::Rvt => tr!("format-rvt-image"),
             Self::Gpt => tr!("format-gpt-image"),
@@ -180,6 +182,10 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         && &erofs_magic == EROFS_MAGIC
     {
         return (FileKind::Erofs, tr!("detect-erofs"));
+    }
+
+    if common::formats::ext4::is_ext4(path).unwrap_or(false) {
+        return (FileKind::Ext4, tr!("detect-ext4"));
     }
 
     // HVB footer at the tail

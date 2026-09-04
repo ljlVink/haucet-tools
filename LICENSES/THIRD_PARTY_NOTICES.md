@@ -23,6 +23,13 @@ Haucet. It is not a substitute for the referenced license texts.
   upstream projects are GPL-2.0; their license text is retained in
   `LICENSES/GPL-2.0.txt`. The separately bundled `mkfs.erofs` remains the
   erofs-utils-compatible external repacking tool.
+- `crates/ext4-extract` provides in-process Rust ext2/ext4 extraction. Filesystem parsing
+  uses [ext4-view](https://github.com/nicholasbishop/ext4-view-rs), licensed
+  under MIT or Apache-2.0, for file extraction and
+  [ext4-rs](https://github.com/FauxFaux/ext4-rs), licensed under MIT, for inode
+  extended attributes. This distribution uses ext4-view under Apache-2.0. See
+  `LICENSES/GPL-2.0.txt`, `LICENSES/Apache-2.0.txt`, and
+  `LICENSES/MIT-ext4-rs.txt`.
 - HarmonyOS update package behavior was adapted from
   [OpenHarmony update_packaging_tools](https://gitcode.com/openharmony/update_packaging_tools),
   and HVB behavior was adapted from

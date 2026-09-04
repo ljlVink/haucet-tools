@@ -238,6 +238,7 @@ impl HomePage {
 enum ActionKind {
     Input,
     ErofsInput,
+    Ext4Input,
     ErofsWorkspace,
     RamdiskInput,
     RamdiskWorkspace,
@@ -258,6 +259,18 @@ fn suggested_actions(kind: FileKind) -> Vec<(String, Page, ActionKind)> {
                 tr!("action-unpack-erofs"),
                 Page::Images,
                 ActionKind::ErofsInput,
+            ),
+            (
+                tr!("action-view-partition"),
+                Page::Images,
+                ActionKind::PartitionInput,
+            ),
+        ],
+        FileKind::Ext4 => vec![
+            (
+                tr!("action-unpack-ext4"),
+                Page::Images,
+                ActionKind::Ext4Input,
             ),
             (
                 tr!("action-view-partition"),
@@ -344,6 +357,10 @@ fn apply_action(app: &mut HaucetApp, page: Page, kind: ActionKind, path: &str) {
             app.images.kind = crate::pages::images::ImageKind::Erofs;
             app.images.erofs.select_workspace(path.to_owned());
             app.images.erofs.tab = crate::pages::erofs::ErofsTab::Repack;
+        }
+        (Page::Images, ActionKind::Ext4Input) => {
+            app.images.kind = crate::pages::images::ImageKind::Ext4;
+            app.images.ext4.select_image(path.to_owned());
         }
         (Page::Images, ActionKind::RamdiskInput) => {
             app.images.kind = crate::pages::images::ImageKind::Ramdisk;

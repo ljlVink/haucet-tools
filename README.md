@@ -5,7 +5,7 @@
 
 <h1 align="center">Haucet</h1>
 
-Haucet is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and maintenance. It unpacks HarmonyOS update packages, inspects and rebuilds EROFS and ramdisk images, edits CPIO archives and NVE data, inspects OEMINFO and partition metadata, flashes images via Fastboot, and uploads loaders via HiSilicon VCOM.
+Haucet is a Rust CLI and desktop GUI for Huawei HarmonyOS firmware analysis and maintenance. It unpacks HarmonyOS update packages, extracts ext2/ext4 partitions, inspects and rebuilds EROFS and ramdisk images, edits CPIO archives and NVE data, inspects OEMINFO and partition metadata, flashes images via Fastboot, and uploads loaders via HiSilicon VCOM.
 
 ## Examples
 
@@ -16,6 +16,7 @@ haucet-tools unpack update_full_base.zip --out work --partition system --partiti
 haucet-tools unpack update_full_base.zip --out work --all-erofs
 haucet-tools erofs unpack system.img --out system-work
 haucet-tools erofs repack system-work --output new-system.img
+haucet-tools ext4 unpack preload.img --out preload-work
 haucet-tools partition-info ramdisk.img # also system.img
 haucet-tools ramdisk unpack ramdisk.img --out ramdisk-work
 haucet-tools ramdisk repack ramdisk-work ramdisk.img --out new-ramdisk.img
@@ -54,6 +55,8 @@ The initial release rebuilds partition images. It does not create a newly signed
 
 - [boardswarm/fastboot-rs](https://github.com/boardswarm/fastboot-rs) - upstream of the Rust fastboot implementation used by `hm-fastboot`.
 - [sekaiacg/erofs-tools](https://github.com/sekaiacg/erofs-tools) and [erofs/erofs-utils](https://github.com/erofs/erofs-utils) - EROFS extraction/repacking tools and filesystem implementation.
+- [ext4-view](https://github.com/nicholasbishop/ext4-view-rs) - pure Rust read-only ext2/ext4 filesystem parser.
+- [ext4-rs](https://github.com/FauxFaux/ext4-rs) - pure Rust ext4 inode and extended-attribute parser.
 - [kitsuned/Potato.ImageFlasher](https://github.com/kitsuned/Potato.ImageFlasher) - image-flashing workflow reference reimplemented in Rust.
 - [ljlVink/ramdisk-tools](https://github.com/ljlVink/ramdisk-tools) and [topjohnwu/Magisk](https://github.com/topjohnwu/Magisk) - ramdisk formats and the `init_early` patch layout.
 - [OpenHarmony update_packaging_tools](https://gitcode.com/openharmony/update_packaging_tools) - HarmonyOS/OpenHarmony update package format behavior.

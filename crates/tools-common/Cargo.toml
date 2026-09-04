@@ -2,7 +2,7 @@
 name = "common"
 version.workspace = true
 edition.workspace = true
-description = "Library for unpacking and repacking Huawei update, EROFS, and ramdisk images"
+description = "Library for Huawei update, ext4, EROFS, and ramdisk images"
 license.workspace = true
 
 [dependencies]
@@ -11,6 +11,7 @@ bzip2.workspace = true
 bytemuck.workspace = true
 crc32c.workspace = true
 erofs-extract = { path = "../erofs-extract" }
+ext4-extract = { path = "../ext4-extract" }
 flate2.workspace = true
 fs2.workspace = true
 hex.workspace = true

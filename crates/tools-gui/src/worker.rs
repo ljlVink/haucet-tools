@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, ensure};
-use common::formats::{cpio, erofs, header::check_fmt_full};
+use common::formats::{cpio, erofs, ext4, header::check_fmt_full};
 use common::package::UpdateLayout;
 use common::tools::ToolPaths;
 use common::{entropy, fs_util, nvme, oeminfo, package, partition, ramdisk};
@@ -37,6 +37,11 @@ pub enum JobOp {
         output: String,
         allow_grow: bool,
         tools_dir: Option<String>,
+    },
+    Ext4Unpack {
+        image: String,
+        output: String,
+        force: bool,
     },
     RamdiskUnpack {
         image: String,
@@ -194,6 +199,23 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             Ok(WorkerResult {
                 ok: true,
                 summary: tr!("worker-erofs-repacked", "output" => output.clone()),
+                payload: None,
+            })
+        }
+        JobOp::Ext4Unpack {
+            image,
+            output,
+            force,
+        } => {
+            let report = ext4::unpack(Path::new(image), Path::new(output), *force)?;
+            Ok(WorkerResult {
+                ok: true,
+                summary: tr!(
+                    "worker-ext4-unpacked",
+                    "output" => output.clone(),
+                    "files" => report.files,
+                    "directories" => report.directories
+                ),
                 payload: None,
             })
         }

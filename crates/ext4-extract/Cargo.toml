@@ -1,0 +1,12 @@
+[package]
+name = "ext4-extract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pure Rust read-only ext2/ext4 filesystem extractor"
+
+[dependencies]
+anyhow.workspace = true
+ext4-metadata.workspace = true
+ext4-view.workspace = true

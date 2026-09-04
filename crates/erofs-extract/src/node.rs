@@ -6,6 +6,13 @@ use crate::inode::{Inode, erofs_mode_to_ftype, s_isdir};
 use crate::xattr::{self, XATTR_NAME_CAPABILITY, XATTR_NAME_SELINUX};
 
 pub const PATH_MAX: usize = 4096;
+const VFS_CAP_REVISION_MASK: u32 = 0xFF00_0000;
+const VFS_CAP_REVISION_1: u32 = 0x0100_0000;
+const VFS_CAP_REVISION_2: u32 = 0x0200_0000;
+const VFS_CAP_REVISION_3: u32 = 0x0300_0000;
+const XATTR_CAPS_SZ_1: usize = 12;
+const XATTR_CAPS_SZ_2: usize = 20;
+const XATTR_CAPS_SZ_3: usize = 24;
 
 pub struct ErofsNode {
     pub path: String,
@@ -107,14 +114,6 @@ fn init_security_context(node: &mut ErofsNode) {
         _ => {}
     }
 }
-
-const VFS_CAP_REVISION_MASK: u32 = 0xFF00_0000;
-const VFS_CAP_REVISION_1: u32 = 0x0100_0000;
-const VFS_CAP_REVISION_2: u32 = 0x0200_0000;
-const VFS_CAP_REVISION_3: u32 = 0x0300_0000;
-const XATTR_CAPS_SZ_1: usize = 12;
-const XATTR_CAPS_SZ_2: usize = 20;
-const XATTR_CAPS_SZ_3: usize = 24;
 
 fn parse_vfs_cap_data(data: &[u8]) -> Option<u64> {
     if data.len() < 4 {

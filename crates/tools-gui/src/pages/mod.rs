@@ -1,6 +1,7 @@
 pub mod cpio;
 pub mod entropy;
 pub mod erofs;
+pub mod ext4;
 pub mod fastboot;
 pub mod home;
 pub mod images;

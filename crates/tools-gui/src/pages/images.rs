@@ -5,6 +5,7 @@ use eframe::egui;
 pub enum ImageKind {
     #[default]
     Erofs,
+    Ext4,
     Ramdisk,
     Partition,
 }
@@ -13,6 +14,7 @@ pub enum ImageKind {
 pub struct ImagesPage {
     pub kind: ImageKind,
     pub erofs: super::erofs::ErofsPage,
+    pub ext4: super::ext4::Ext4Page,
     pub ramdisk: super::ramdisk::RamdiskPage,
     pub partition: super::partition::PartitionPage,
 }
@@ -23,7 +25,7 @@ impl ImagesPage {
             .id_salt("images-scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.columns(3, |columns| {
+                ui.columns(4, |columns| {
                     if kind_card(
                         &mut columns[0],
                         self.kind == ImageKind::Erofs,
@@ -36,6 +38,16 @@ impl ImagesPage {
                     }
                     if kind_card(
                         &mut columns[1],
+                        self.kind == ImageKind::Ext4,
+                        &tr!("images-ext4-title"),
+                        &tr!("images-ext4-description"),
+                    )
+                    .clicked()
+                    {
+                        self.kind = ImageKind::Ext4;
+                    }
+                    if kind_card(
+                        &mut columns[2],
                         self.kind == ImageKind::Ramdisk,
                         &tr!("images-ramdisk-title"),
                         &tr!("images-ramdisk-description"),
@@ -45,7 +57,7 @@ impl ImagesPage {
                         self.kind = ImageKind::Ramdisk;
                     }
                     if kind_card(
-                        &mut columns[2],
+                        &mut columns[3],
                         self.kind == ImageKind::Partition,
                         &tr!("images-partition-title"),
                         &tr!("images-partition-description"),
@@ -60,6 +72,7 @@ impl ImagesPage {
                 ui.separator();
                 match self.kind {
                     ImageKind::Erofs => self.erofs.ui(ui, app),
+                    ImageKind::Ext4 => self.ext4.ui(ui, app),
                     ImageKind::Ramdisk => self.ramdisk.ui(ui, app),
                     ImageKind::Partition => self.partition.ui(ui, app),
                 }

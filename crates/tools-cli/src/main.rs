@@ -2,7 +2,11 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use common::formats::cpio::{Cpio, parse_cpio_mode};
 use common::package::UpdateLayout;
-use common::{entropy, formats::erofs, fs_util, oeminfo, package, ramdisk};
+use common::{
+    entropy,
+    formats::{erofs, ext4},
+    fs_util, oeminfo, package, ramdisk,
+};
 use std::path::{Path, PathBuf};
 
 mod fastboot;
@@ -30,6 +34,12 @@ enum Command {
     Erofs {
         #[command(subcommand)]
         command: ErofsCommand,
+    },
+    /// Unpack an ext2/ext4 image
+    #[command(arg_required_else_help = true)]
+    Ext4 {
+        #[command(subcommand)]
+        command: Ext4Command,
     },
     /// Run commands on a cpio archive and save changes in place
     #[command(arg_required_else_help = true)]
@@ -191,6 +201,18 @@ enum ErofsCommand {
 }
 
 #[derive(Debug, Subcommand)]
+enum Ext4Command {
+    /// Unpack an ext2/ext4 image into a directory
+    Unpack {
+        image: PathBuf,
+        #[arg(short, long)]
+        out: PathBuf,
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 enum RamdiskCommand {
     /// Unpack an HMOS ramdisk image into a workspace directory
     Unpack {
@@ -306,6 +328,15 @@ fn run_erofs_command(command: ErofsCommand) -> Result<()> {
             output,
             allow_grow,
         } => erofs::repack(&workspace, &output, allow_grow),
+    }
+}
+
+fn run_ext4_command(command: Ext4Command) -> Result<()> {
+    match command {
+        Ext4Command::Unpack { image, out, force } => {
+            ext4::unpack(&image, &out, force)?;
+            Ok(())
+        }
     }
 }
 
@@ -538,6 +569,7 @@ fn main() {
     let result = match Cli::parse().command {
         Command::Unpack(args) => run_unpack_command(args),
         Command::Erofs { command } => run_erofs_command(command),
+        Command::Ext4 { command } => run_ext4_command(command),
         Command::Cpio { incpio, command } => run_cpio_command(&incpio, command),
         Command::PartitionInfo { image } => run_partition_info_command(image),
         Command::Entropy { file } => run_entropy_command(file),
