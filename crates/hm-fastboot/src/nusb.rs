@@ -6,8 +6,10 @@ use nusb::transfer::{Buffer, In, Out};
 pub use nusb::{Device, DeviceInfo, Interface, transfer::TransferError};
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::fs::File;
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::str::FromStr;
 use thiserror::Error;
 use tracing::{info, warn};
 use tracing::{instrument, trace};
@@ -89,6 +91,84 @@ pub enum NusbFastBootOpenError {
     FastbootParseError(#[from] FastBootResponseParseError),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorageRange {
+    pub offset: u64,
+    pub length: u64,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum StorageRangeParseError {
+    #[error("storage range must be OFFSET:LENGTH")]
+    Format,
+    #[error("invalid storage offset: {0}")]
+    Offset(String),
+    #[error("invalid storage length: {0}")]
+    Length(String),
+    #[error("storage length must not be zero")]
+    ZeroLength,
+    #[error("storage range overflows the 64-bit address space")]
+    Overflow,
+}
+
+impl FromStr for StorageRange {
+    type Err = StorageRangeParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let (offset, length) = value
+            .trim()
+            .split_once(':')
+            .ok_or(StorageRangeParseError::Format)?;
+        if offset.is_empty() || length.is_empty() || length.contains(':') {
+            return Err(StorageRangeParseError::Format);
+        }
+
+        let offset = parse_storage_hex(offset)
+            .ok_or_else(|| StorageRangeParseError::Offset(offset.to_owned()))?;
+        let length = parse_storage_hex(length)
+            .ok_or_else(|| StorageRangeParseError::Length(length.to_owned()))?;
+        if length == 0 {
+            return Err(StorageRangeParseError::ZeroLength);
+        }
+        offset
+            .checked_add(length)
+            .ok_or(StorageRangeParseError::Overflow)?;
+
+        Ok(Self { offset, length })
+    }
+}
+
+fn parse_storage_hex(value: &str) -> Option<u64> {
+    let value = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    (!value.is_empty())
+        .then(|| u64::from_str_radix(value, 16).ok())
+        .flatten()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractPartEvent {
+    Started(StorageRange),
+    Progress { written: u64, total: u64 },
+}
+
+#[derive(Debug, Error)]
+pub enum ExtractPartError {
+    #[error(transparent)]
+    Fastboot(#[from] NusbFastBootError),
+    #[error("invalid storage range returned for partition {partition}: {value:?}: {source}")]
+    InvalidStorageRange {
+        partition: String,
+        value: String,
+        #[source]
+        source: StorageRangeParseError,
+    },
+    #[error("output image I/O failed: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 pub struct NusbFastBoot {
     ep_out: Endpoint<Bulk, Out>,
     max_out: usize,
@@ -97,6 +177,7 @@ pub struct NusbFastBoot {
 }
 
 const HARMONY_BOOT_ID: &[(u16, u16)] = &[(0x12d1, 0x1100), (0x12d1, 0x1101)];
+const EXTRACT_PART_CHUNK_SIZE: u64 = 64 * 1024 * 1024;
 
 impl NusbFastBoot {
     pub fn find_fastboot_interface(info: &DeviceInfo) -> Option<u8> {
@@ -348,6 +429,86 @@ impl NusbFastBoot {
     ) -> Result<Vec<u8>, NusbFastBootError> {
         let cmd = FastBootCommand::UploadStorage(params);
         self.upload_data(cmd, size).await
+    }
+
+    pub async fn extract_part(
+        &mut self,
+        partition: &str,
+        output: &Path,
+        progress: &mut dyn FnMut(ExtractPartEvent),
+    ) -> Result<StorageRange, ExtractPartError> {
+        let variable = format!("storage:{partition}");
+        let value = self.get_var(&variable).await?;
+        let range = value
+            .parse()
+            .map_err(|source| ExtractPartError::InvalidStorageRange {
+                partition: partition.to_owned(),
+                value,
+                source,
+            })?;
+        progress(ExtractPartEvent::Started(range));
+
+        let file = File::create(output)?;
+        let mut writer = BufWriter::new(file);
+        let mut written = 0u64;
+        while written < range.length {
+            let length = (range.length - written).min(EXTRACT_PART_CHUNK_SIZE) as u32;
+            let offset = range.offset + written;
+            let params = format!("{offset:016x}:{length:016x}");
+            self.upload_storage_to(&params, length, &mut writer).await?;
+            written += u64::from(length);
+            progress(ExtractPartEvent::Progress {
+                written,
+                total: range.length,
+            });
+        }
+        writer.flush()?;
+        Ok(range)
+    }
+
+    async fn upload_storage_to<W: Write>(
+        &mut self,
+        params: &str,
+        size: u32,
+        output: &mut W,
+    ) -> Result<(), ExtractPartError> {
+        self.send_command(FastBootCommand::UploadStorage(params))
+            .await?;
+
+        loop {
+            match self.read_response().await? {
+                FastBootResponse::Info(i) => info!("info: {i}"),
+                FastBootResponse::Text(t) => info!("Text: {t}"),
+                FastBootResponse::Okay(_) => break,
+                FastBootResponse::Data(_) => {
+                    return Err(NusbFastBootError::FastbootUnexpectedReply.into());
+                }
+                FastBootResponse::Fail(fail) => {
+                    return Err(NusbFastBootError::FastbootFailed(fail).into());
+                }
+            }
+        }
+
+        let mut received = 0u32;
+        while received < size {
+            self.ep_in.submit(Buffer::new(self.max_in));
+            let chunk = self
+                .ep_in
+                .next_complete()
+                .await
+                .into_result()
+                .map_err(NusbFastBootError::Transfer)?;
+            if chunk.is_empty() {
+                return Err(NusbFastBootError::FastbootUnexpectedReply.into());
+            }
+            let remaining = (size - received) as usize;
+            let amount = chunk.len().min(remaining);
+            output.write_all(&chunk[..amount])?;
+            received += amount as u32;
+        }
+
+        self.handle_responses().await?;
+        Ok(())
     }
 
     async fn upload_data<S: Display>(

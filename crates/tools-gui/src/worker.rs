@@ -82,6 +82,10 @@ pub enum JobOp {
         image: String,
         target: String,
     },
+    FastbootExtract {
+        partition: String,
+        output: String,
+    },
     VcomStatus {},
     VcomFlash {
         port: String,
@@ -348,6 +352,14 @@ fn execute(op: &JobOp) -> Result<WorkerResult> {
             ensure!(!target.trim().is_empty(), "{}", tr!("partition-name-empty"));
             fastboot_flash(Path::new(image), target.trim())
         }
+        JobOp::FastbootExtract { partition, output } => {
+            ensure!(
+                !partition.trim().is_empty(),
+                "{}",
+                tr!("partition-name-empty")
+            );
+            fastboot_extract(partition.trim(), Path::new(output))
+        }
         JobOp::VcomStatus {} => vcom_status(),
         JobOp::VcomFlash {
             port,
@@ -566,6 +578,55 @@ fn fastboot_flash(image: &Path, target: &str) -> Result<WorkerResult> {
         Ok(WorkerResult {
             ok: true,
             summary: tr!("worker-image-flashed", "image" => image.display().to_string(), "target" => target.to_owned()),
+            payload: None,
+        })
+    })
+}
+
+fn fastboot_extract(partition: &str, output: &Path) -> Result<WorkerResult> {
+    let runtime = fastboot_runtime()?;
+    runtime.block_on(async {
+        use hm_fastboot::nusb::{ExtractPartEvent, NusbFastBoot};
+
+        let devices = hm_fastboot::nusb::devices()
+            .await
+            .context(tr!("enumerate-usb-error"))?;
+        let info = single_fastboot_device(devices)?;
+        let mut fb = NusbFastBoot::from_info(&info)
+            .await
+            .context(tr!("open-fastboot-device-error"))?;
+
+        let mut progress = |event| match event {
+            ExtractPartEvent::Started(range) => emit_log(&tr!(
+                "extract-part-range",
+                "partition" => partition.to_owned(),
+                "offset" => format!("0x{:x}", range.offset),
+                "length" => format!("0x{:x}", range.length),
+            )),
+            ExtractPartEvent::Progress { written, total } => emit_log(&tr!(
+                "extract-part-progress",
+                "written" => written,
+                "total" => total,
+            )),
+        };
+        let range = fb
+            .extract_part(partition, output, &mut progress)
+            .await
+            .with_context(|| {
+                tr!(
+                    "extract-part-error",
+                    "partition" => partition.to_owned(),
+                    "output" => output.display().to_string(),
+                )
+            })?;
+        Ok(WorkerResult {
+            ok: true,
+            summary: tr!(
+                "worker-partition-extracted",
+                "partition" => partition.to_owned(),
+                "output" => output.display().to_string(),
+                "length" => range.length,
+            ),
             payload: None,
         })
     })

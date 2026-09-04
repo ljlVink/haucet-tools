@@ -29,6 +29,7 @@ pub struct FastbootStatusPayload {
 enum PendingOp {
     Status,
     Reboot,
+    Extract,
     Flash,
 }
 
@@ -39,6 +40,8 @@ pub struct FastbootPage {
     pub auto_checked: bool,
     pub image: String,
     pub target: String,
+    pub extract_partition: String,
+    pub extract_result: Option<ResultView>,
     pub result: Option<ResultView>,
     pub reboot_result: Option<ResultView>,
     pending: Option<PendingOp>,
@@ -58,6 +61,8 @@ impl FastbootPage {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 self.status_section(ui, app);
+                ui.add_space(10.0);
+                self.extract_section(ui, app);
                 ui.add_space(10.0);
                 self.flash_section(ui, app);
                 ui.add_space(20.0);
@@ -97,7 +102,7 @@ impl FastbootPage {
                 let text = match self.pending {
                     Some(PendingOp::Status) => tr!("detecting"),
                     Some(PendingOp::Reboot) => tr!("rebooting"),
-                    Some(PendingOp::Flash) | None => tr!("task-running"),
+                    Some(PendingOp::Extract | PendingOp::Flash) | None => tr!("task-running"),
                 };
                 ui.label(egui::RichText::new(text).weak());
             }
@@ -180,6 +185,58 @@ impl FastbootPage {
                         });
                 }
             });
+    }
+
+    fn extract_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
+        section(ui, &tr!("extract-partition"));
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(tr!("partition-name")).strong());
+            ui.add(
+                egui::TextEdit::singleline(&mut self.extract_partition)
+                    .hint_text(tr!("extract-partition-name-hint"))
+                    .desired_width(ui.available_width() - 170.0),
+            );
+        });
+        ui.add_space(6.0);
+
+        let ready = !app.job_running()
+            && self
+                .status
+                .as_ref()
+                .is_some_and(|status| status.connected && status.devices.len() == 1)
+            && !self.extract_partition.trim().is_empty();
+        if run_button(
+            ui,
+            &tr!("extract-partition"),
+            ready,
+            Some(&tr!("extract-partition-hint")),
+        )
+        .clicked()
+        {
+            let partition = self.extract_partition.trim().to_owned();
+            let suggested = format!("{partition}.img");
+            if let Some(output) = app.pick_save(&tr!("choose-extracted-image"), &suggested) {
+                self.extract_result = None;
+                self.pending = Some(PendingOp::Extract);
+                app.start_job(crate::worker::JobOp::FastbootExtract {
+                    partition,
+                    output: output.display().to_string(),
+                });
+            }
+        }
+        if app.job_running() && self.pending == Some(PendingOp::Extract) {
+            ui.label(egui::RichText::new(tr!("task-running")).weak());
+        }
+
+        ui.add_space(10.0);
+        if let Some(result) = &self.extract_result {
+            let color = if result.ok {
+                egui::Color32::from_rgb(90, 200, 120)
+            } else {
+                egui::Color32::from_rgb(230, 90, 90)
+            };
+            message_box(ui, color, &result.summary);
+        }
     }
 
     fn flash_section(&mut self, ui: &mut egui::Ui, app: &mut HaucetApp) {
@@ -295,6 +352,13 @@ impl FastbootPage {
                     self.status = None;
                     self.status_error = None;
                 }
+            }
+            PendingOp::Extract => {
+                self.extract_result = Some(ResultView {
+                    ok: result.ok,
+                    summary: result.summary,
+                    output: String::new(),
+                });
             }
             PendingOp::Flash => {
                 self.result = Some(ResultView {

@@ -27,6 +27,7 @@ haucet-tools cpio ramdisk.cpio ls --recursive /
 haucet-tools fastboot devices
 haucet-tools fastboot flash updater updater_vendor.img
 haucet-tools fastboot getvar product
+haucet-tools fastboot extract-part oeminfo oeminfo.img
 haucet-tools fastboot reboot
 haucet-tools fastboot oem device-info
 haucet-tools vcom devices

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use hm_fastboot::nusb::{
-    FlashEvent, NusbFastBoot, NusbFastBootError, clean_device_string, require_single_device,
+    ExtractPartEvent, FlashEvent, NusbFastBoot, NusbFastBootError, clean_device_string,
+    require_single_device,
 };
 use std::fs::File;
 use std::io::{Read, Write};
@@ -167,6 +168,34 @@ pub async fn upload_storage(params: &str, output: &Path) -> Result<()> {
         "Uploaded storage range {params} to {} ({} bytes)",
         output.display(),
         data.len()
+    );
+    Ok(())
+}
+
+pub async fn extract_part(partition: &str, output: &Path) -> Result<()> {
+    let mut fb = open_only().await?;
+    let mut progress = |event| match event {
+        ExtractPartEvent::Started(range) => println!(
+            "Partition {partition}: offset=0x{:x}, length=0x{:x} ({} bytes)",
+            range.offset, range.length, range.length
+        ),
+        ExtractPartEvent::Progress { written, total } => {
+            println!("Progress: {written}/{total} bytes")
+        }
+    };
+    let range = fb
+        .extract_part(partition, output, &mut progress)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to extract partition {partition} to {}",
+                output.display()
+            )
+        })?;
+    println!(
+        "Extracted partition {partition} to {} ({} bytes)",
+        output.display(),
+        range.length
     );
     Ok(())
 }

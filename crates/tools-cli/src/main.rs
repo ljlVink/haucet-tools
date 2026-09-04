@@ -98,6 +98,14 @@ enum FastbootCommand {
         /// Output file for the received bytes
         output: PathBuf,
     },
+    /// Extract a complete partition from the device into an image file
+    #[command(name = "extract-part")]
+    ExtractPart {
+        /// Partition name, e.g. `oeminfo`, `boot`, or `system`
+        partition: String,
+        /// Output image file
+        output: PathBuf,
+    },
     /// Flash an image, using ultraflash automatically when supported
     Flash {
         /// Target partition name, e.g. `updater`, `ramdisk`, or `vendor`
@@ -476,6 +484,9 @@ fn run_fastboot_command(command: FastbootCommand) -> Result<()> {
             }
             FastbootCommand::UploadStorage { params, output } => {
                 fastboot::upload_storage(&params, &output).await
+            }
+            FastbootCommand::ExtractPart { partition, output } => {
+                fastboot::extract_part(&partition, &output).await
             }
             FastbootCommand::Flash { partition, image } => {
                 fastboot::flash(&partition, &image).await

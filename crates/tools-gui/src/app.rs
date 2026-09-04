@@ -519,6 +519,7 @@ fn job_label(op: &JobOp) -> String {
         FastbootStatus { .. } => tr!("job-fastboot-status"),
         FastbootReboot { .. } => tr!("job-fastboot-reboot"),
         FastbootFlash { .. } => tr!("job-fastboot-flash"),
+        FastbootExtract { .. } => tr!("job-fastboot-extract"),
         VcomStatus { .. } => tr!("job-vcom-status"),
         VcomFlash { .. } => tr!("job-vcom-flash"),
     }
