@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use common::nvme::{NVE_BLOCK_SIZE, NVE_HEADER_MAGIC, NVE_HEADER_SIZE};
+use common::nvme::{NVE_BLOCK_SIZE, NVE_HEADER_MAGIC, NVE_HEADER_SIZE, NVE_PARTITION_COUNT};
 
 const HVB_FOOTER_SIZE: usize = 104;
 const HVB_FOOTER_MAGIC: &[u8; 8] = b"HVB\0\0\0\0\0";
@@ -111,21 +111,6 @@ fn detect_file(path: &Path) -> (FileKind, String) {
     let mut head = [0_u8; 180];
     let head_len = read_at(&mut file, &mut head, 0).unwrap_or(0);
 
-    if length >= NVE_BLOCK_SIZE as u64 && length % NVE_BLOCK_SIZE as u64 == 0 {
-        let mut nve_magic = [0_u8; NVE_HEADER_MAGIC.len()];
-        let header_offset = (NVE_BLOCK_SIZE - NVE_HEADER_SIZE) as u64;
-        let mut block_offset = 0_u64;
-        while block_offset < length {
-            if read_at(&mut file, &mut nve_magic, block_offset + header_offset).unwrap_or(0)
-                == nve_magic.len()
-                && nve_magic == NVE_HEADER_MAGIC
-            {
-                return (FileKind::Nve, tr!("detect-nve"));
-            }
-            block_offset += NVE_BLOCK_SIZE as u64;
-        }
-    }
-
     // ZIP package
     if head_len >= 4 && &head[0..4] == b"PK\x03\x04" {
         return (FileKind::ZipPackage, tr!("detect-zip"));
@@ -196,6 +181,23 @@ fn detect_file(path: &Path) -> (FileKind, String) {
         && &footer[0..8] == HVB_FOOTER_MAGIC
     {
         return (FileKind::HvbWrapped, tr!("detect-hvb"));
+    }
+
+    if length >= NVE_BLOCK_SIZE as u64 && length % NVE_BLOCK_SIZE as u64 == 0 {
+        let mut nve_magic = [0_u8; NVE_HEADER_MAGIC.len()];
+        let header_offset = (NVE_BLOCK_SIZE - NVE_HEADER_SIZE) as u64;
+        for block_index in 0..NVE_PARTITION_COUNT {
+            let block_offset = (block_index * NVE_BLOCK_SIZE) as u64;
+            if block_offset >= length {
+                break;
+            }
+            if read_at(&mut file, &mut nve_magic, block_offset + header_offset).unwrap_or(0)
+                == nve_magic.len()
+                && nve_magic == NVE_HEADER_MAGIC
+            {
+                return (FileKind::Nve, tr!("detect-nve"));
+            }
+        }
     }
 
     // OEMINFO has no fixed image-level header, so only probe for embedded block headers
