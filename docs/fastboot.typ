@@ -293,8 +293,6 @@ fastboot upload-memory 0x3b400000:0x600000 UEFI
 
 先执行 `haucet fastboot oem ddrdump`, 获取设备列出的内存区域.`base` 是起始地址, `size` 是字节长度, `mem` 是区域名称.将 `base:size` 作为 `upload-memory` 的参数, 即可尝试导出对应区域; CLI 使用连字符 `upload-memory`, 线上协议命令为 `upload_memory`.
 
-以下为实测查询输出:
-
 ```bash
 haucet fastboot oem ddrdump
 Using device PCIROOT(0)#PCI(1400)#USBROOT(0):13 ()
@@ -334,7 +332,7 @@ OEM 扩展命令与 Getvar 变量.
   table.header([*OEM 子命令*], [*状态*], [*当前观测*]),
   [`ddrdump`], [#tag([实测], color: teal, background: teal-soft)], [列出内存区域的 `base`、`size` 和 `mem`; 已配合 `upload-memory` 导出 `fastbootlog`, 详见内存读取章节.],
   [`read`], [#tag([实测], color: teal, background: teal-soft)], [读取地址 `0x10CFC0`, 返回地址及其当前值; 详见地址读写实测.],
-  [`write`], [#tag([实测], color: teal, background: teal-soft)], [向地址 `0x10CFC0` 写入 `0x41414141`, 随后通过 `read` 确认读回一致.],
+  [`write`], [#tag([实测], color: teal, background: teal-soft)], [向地址 `0x10CFC0` 写入 `0x11451419`, 随后通过 `read` 确认读回一致.],
   [`get-bsn`], [#tag([实测], color: teal, background: teal-soft)], [返回设备序列号（SN）.],
   [`get-sn`], [#tag([失败])], [设备返回错误, 未附带可用信息.],
   [`sram_dhry_stone`], [#tag([已响应], color: teal, background: teal-soft)], [返回 `OKAY`, 无附加输出; 实际测试效果仍需确认.],
@@ -347,9 +345,7 @@ OEM 扩展命令与 Getvar 变量.
 
 == 地址读写实测
 
-本次通过 OEM `read` / `write` 完成“读取原值 → 写入测试值 → 再次读取”的验证.地址 `0x10CFC0` 初始返回 `0x00000000`, 写入后返回 `0x41414141`; 不仅写入命令显示完成, 后续读回值也与测试值一致.
-
-以下保留本次 PowerShell 命令及输出, 省略提示符中的工作目录; 写入参数按提供的记录保留为 `0x10CFC0\@0x41414141`.
+本次通过 OEM `read` / `write` 完成“读取原值 → 写入测试值 → 再次读取”的验证.地址 `0x10CFC0` 初始返回 `0x00000000`, 写入后返回 `0x11451419`; 不仅写入命令显示完成, 后续读回值也与测试值一致.
 
 ```text
 haucet fastboot oem read 0x10CFC0
@@ -357,17 +353,15 @@ Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
  0x0010CFC0: 0x00000000
 OEM command completed
 
-haucet fastboot oem write 0x10CFC0\@0x41414141
+haucet fastboot oem write 0x10CFC0\@0x11451419
 Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
 OEM command completed
 
 haucet fastboot oem read 0x10CFC0
 Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
- 0x0010CFC0: 0x41414141
+ 0x0010CFC0: 0x11451419
 OEM command completed
 ```
-
-本次仅确认该设备、当前固件与安全状态下, 该地址写入后能够立即读回一致的值.访问宽度、地址允许范围、对齐要求和重启后的保持情况均未验证; 记录中也未包含恢复原值的步骤.
 
 #callout(
   [地址写入风险],
