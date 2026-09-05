@@ -10,7 +10,14 @@
 #let amber-soft = rgb("#FFF4DF")
 #let code-bg = rgb("#1E2932")
 
-#set document(title: "Huawei Fastboot", author: "gpt-5.6-sol-xhigh")
+#let authors = (
+  "ljlVink",
+  "gpt-5.6-sol-xhigh",
+  "gpt-6-astra-xhigh",
+  "deepseek-v4-flash-max",
+)
+
+#set document(title: "Huawei Fastboot", author: authors)
 
 #set page(
   paper: "a4",
@@ -121,6 +128,8 @@
   #text(size: 30pt, weight: "bold", fill: ink)[Huawei Fastboot]
   #v(12pt)
   #line(length: 42mm, stroke: 3pt + accent)
+  #v(12pt)
+  #text(size: 9pt, fill: muted)[作者：#authors.join(", ")]
 ]
 
 #v(15mm)
@@ -253,8 +262,8 @@ haucet fastboot upload-storage 0x0:0x6000 user-lun-gpt.bin
 该命令按地址读取内存.设备端解析 `ADDRESS:LENGTH`, 判断地址所属的安全类型, 再选择直接发送或通过固定缓冲区分块复制.它具有明显的固件和安全状态依赖性.
 
 #callout(
-  [Warn],
-  [WIP this func is not tested? Incorrect read may cause device reboot.],
+  [实测范围与风险],
+  [已实测根据 `oem ddrdump` 返回的地址和长度导出部分日志区域, 其他内存区域尚未逐项验证; 不正确的地址或长度仍可能导致设备重启.],
   kind: "warn",
 )
 
@@ -262,6 +271,12 @@ haucet fastboot upload-storage 0x0:0x6000 user-lun-gpt.bin
 
 ```bash
 haucet fastboot upload-memory 0x<address>:0x<length> memory.bin
+```
+
+Dump UEFI!!
+
+```sh
+fastboot upload-memory 0x3b400000:0x600000 UEFI
 ```
 
 #table(
@@ -274,6 +289,31 @@ haucet fastboot upload-memory 0x<address>:0x<length> memory.bin
   [中转缓冲], [non-secure 路径最多按 `0x1400000` 字节分块复制.], [可能提前结束并记录固件日志],
 )
 
+== 通过 ddrdump 获取内存范围
+
+先执行 `haucet fastboot oem ddrdump`, 获取设备列出的内存区域.`base` 是起始地址, `size` 是字节长度, `mem` 是区域名称.将 `base:size` 作为 `upload-memory` 的参数, 即可尝试导出对应区域; CLI 使用连字符 `upload-memory`, 线上协议命令为 `upload_memory`.
+
+以下为实测查询输出:
+
+```bash
+haucet fastboot oem ddrdump
+Using device PCIROOT(0)#PCI(1400)#USBROOT(0):13 ()
+base:0x000000002FC20000, size:0x00020000 mem:bl31_log
+base:0x0000000011B97000, size:0x0000C000 mem:hhee_log
+base:0x0000000010954000, size:0x00010000 mem:bl2
+base:0x0000000010900000, size:0x00040000 mem:fastbootlog
+base:0x000000002F080000, size:0x00580000 mem:hifi_unsec_mem
+base:0x000000001E000000, size:0x00E00000 mem:share_nsro
+base:0x000000001EE00000, size:0x00200000 mem:share_unsec
+base:0x000000001F000000, size:0x00400000 mem:modem_dump
+base:0x00000000A0000000, size:0x0E100000 mem:modem_ddr
+base:0x0000000012840000, size:0x000C0000 mem:lpmcu_image
+OEM command completed
+
+haucet.exe fastboot upload-memory 0x10900000:0x40000 fastbootlog.bin
+Using device PCIROOT(0)#PCI(1400)#USBROOT(0):13 ()
+Uploaded memory range 0x10900000:0x40000 to fastbootlog.bin (262144 bytes)
+```
 
 #pagebreak()
 
@@ -292,6 +332,9 @@ OEM 扩展命令与 Getvar 变量.
   columns: (2.05fr, 0.82fr, 2.75fr),
   fill: (x, y) => if y == 0 { paper },
   table.header([*OEM 子命令*], [*状态*], [*当前观测*]),
+  [`ddrdump`], [#tag([实测], color: teal, background: teal-soft)], [列出内存区域的 `base`、`size` 和 `mem`; 已配合 `upload-memory` 导出 `fastbootlog`, 详见内存读取章节.],
+  [`read`], [#tag([实测], color: teal, background: teal-soft)], [读取地址 `0x10CFC0`, 返回地址及其当前值; 详见地址读写实测.],
+  [`write`], [#tag([实测], color: teal, background: teal-soft)], [向地址 `0x10CFC0` 写入 `0x41414141`, 随后通过 `read` 确认读回一致.],
   [`get-bsn`], [#tag([实测], color: teal, background: teal-soft)], [返回设备序列号（SN）.],
   [`get-sn`], [#tag([失败])], [设备返回错误, 未附带可用信息.],
   [`sram_dhry_stone`], [#tag([已响应], color: teal, background: teal-soft)], [返回 `OKAY`, 无附加输出; 实际测试效果仍需确认.],
@@ -300,6 +343,36 @@ OEM 扩展命令与 Getvar 变量.
   [`get-bootinfo`], [#tag([实测], color: teal, background: teal-soft)], [返回 `locked` 或 `unlocked`.],
   [`hwdog certify enc begin` / `hwdog certify close`], [#tag([WIP], color: amber, background: amber-soft)], [`hm-fastboot` 中的客户端支持尚未完成.],
   [`frp-unlock` / `frp-erase`], [#tag([?])], [涉及 FRP 状态修改.],
+)
+
+== 地址读写实测
+
+本次通过 OEM `read` / `write` 完成“读取原值 → 写入测试值 → 再次读取”的验证.地址 `0x10CFC0` 初始返回 `0x00000000`, 写入后返回 `0x41414141`; 不仅写入命令显示完成, 后续读回值也与测试值一致.
+
+以下保留本次 PowerShell 命令及输出, 省略提示符中的工作目录; 写入参数按提供的记录保留为 `0x10CFC0\@0x41414141`.
+
+```text
+haucet fastboot oem read 0x10CFC0
+Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
+ 0x0010CFC0: 0x00000000
+OEM command completed
+
+haucet fastboot oem write 0x10CFC0\@0x41414141
+Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
+OEM command completed
+
+haucet fastboot oem read 0x10CFC0
+Using device PCIROOT(0)#PCI(1400)#USBROOT(0):21 ()
+ 0x0010CFC0: 0x41414141
+OEM command completed
+```
+
+本次仅确认该设备、当前固件与安全状态下, 该地址写入后能够立即读回一致的值.访问宽度、地址允许范围、对齐要求和重启后的保持情况均未验证; 记录中也未包含恢复原值的步骤.
+
+#callout(
+  [地址写入风险],
+  [该地址的具体用途尚未确认, 不应将其视为通用安全测试地址.写入未知地址可能破坏设备状态或导致设备异常; 不要直接在其他设备或固件上照抄本例.],
+  kind: "warn",
 )
 
 == 锁状态
