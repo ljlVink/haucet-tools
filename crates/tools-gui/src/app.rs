@@ -14,6 +14,7 @@ pub(crate) struct HaucetApp {
     pub current: Page,
     pub home: pages::home::HomePage,
     pub package: pages::package::PackagePage,
+    pub online: pages::online::OnlinePage,
     pub images: pages::images::ImagesPage,
     pub fastboot: pages::fastboot::FastbootPage,
     pub vcom: pages::vcom::VcomPage,
@@ -82,6 +83,7 @@ impl HaucetApp {
             current: Page::Home,
             home: pages::home::HomePage::default(),
             package: pages::package::PackagePage::default(),
+            online: pages::online::OnlinePage::default(),
             images: pages::images::ImagesPage::default(),
             fastboot: pages::fastboot::FastbootPage::default(),
             vcom: pages::vcom::VcomPage::default(),
@@ -300,6 +302,7 @@ impl HaucetApp {
         nav_group_label(ui, &tr!("nav-files-images"));
         for page in [
             Page::Package,
+            Page::Online,
             Page::Images,
             Page::Cpio,
             Page::OemInfo,
@@ -430,6 +433,11 @@ impl HaucetApp {
                     page.ui(ui, self);
                     self.package = page;
                 }
+                Page::Online => {
+                    let mut page = std::mem::take(&mut self.online);
+                    page.ui(ui, self);
+                    self.online = page;
+                }
                 Page::Images => {
                     let mut page = std::mem::take(&mut self.images);
                     page.ui(ui, self);
@@ -508,6 +516,7 @@ fn job_label(op: &JobOp) -> String {
         OemInfoInspect { .. } => tr!("job-oeminfo-inspect"),
         OemInfoExportImage { .. } => tr!("job-oeminfo-export"),
         PackageInspect { .. } => tr!("job-package-inspect"),
+        OnlineFetch { .. } => tr!("online-fetch"),
         PackageUnpack { .. } => tr!("job-package-unpack"),
         ErofsUnpack { .. } => tr!("job-erofs-unpack"),
         ErofsRepack { .. } => tr!("job-erofs-repack"),
@@ -528,6 +537,7 @@ fn job_label(op: &JobOp) -> String {
 
 fn result_owner(op: &JobOp, current: Page) -> ResultOwner {
     match op {
+        JobOp::OnlineFetch { .. } => ResultOwner::Page(Page::Online),
         JobOp::ErofsUnpack { .. } | JobOp::ErofsRepack { .. } => {
             ResultOwner::Image(ImageKind::Erofs)
         }

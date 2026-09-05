@@ -6,7 +6,8 @@ members = [
     "crates/hm-fastboot",
     "crates/hisi-vcom",
     "crates/erofs-extract",
-    "crates/ext4-extract"
+    "crates/ext4-extract",
+    "crates/online-fetcher"
 ]
 default-members = [
     "crates/tools-cli",

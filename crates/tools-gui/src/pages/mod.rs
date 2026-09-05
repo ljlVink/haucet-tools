@@ -7,6 +7,7 @@ pub mod home;
 pub mod images;
 pub mod nvme;
 pub mod oeminfo;
+pub mod online;
 pub mod package;
 pub mod partition;
 pub mod ramdisk;
@@ -18,6 +19,7 @@ use eframe::egui;
 pub enum Page {
     Home,
     Package,
+    Online,
     Images,
     Fastboot,
     Vcom,
@@ -31,6 +33,7 @@ impl Page {
         match self {
             Self::Home => tr!("page-home-title"),
             Self::Package => tr!("page-package-title"),
+            Self::Online => tr!("page-online-title"),
             Self::Images => tr!("page-images-title"),
             Self::Fastboot => tr!("page-fastboot-title"),
             Self::Vcom => tr!("page-vcom-title"),
@@ -44,6 +47,7 @@ impl Page {
         match self {
             Self::Home => None,
             Self::Package => Some((tr!("page-package-title"), tr!("page-package-description"))),
+            Self::Online => Some((tr!("page-online-title"), "VERSION.mbn".to_owned())),
             Self::Images => Some((tr!("page-images-title"), tr!("page-images-description"))),
             Self::Fastboot => Some((tr!("page-fastboot-title"), tr!("page-fastboot-description"))),
             Self::Vcom => Some((tr!("page-vcom-title"), tr!("page-vcom-description"))),

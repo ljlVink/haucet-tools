@@ -26,6 +26,14 @@ worker-exited-no-result = Рабочий процесс неожиданно з�
 
 page-home-title = Быстрый старт
 page-package-title = Пакет обновления
+page-online-title = Онлайн-информация
+online-url = Ссылка на ZIP
+online-fetch = Получить сведения
+online-entry = Файл в архиве
+online-read-size = Загружено
+online-copy = Копировать текст
+online-cancelled = Загрузка отменена
+online-fetched = VERSION.mbn прочитан: {$bytes} байт за {$requests} запросов
 page-package-description = Чтение пакета обновления, выбор разделов и распаковка в рабочий каталог.
 page-images-title = Работа с образами
 page-images-description = Распознавание, распаковка, изменение и сборка образов разделов и загрузочных образов.

@@ -26,6 +26,14 @@ worker-exited-no-result = The worker exited unexpectedly without returning a res
 
 page-home-title = Quick start
 page-package-title = Update package
+page-online-title = Online information
+online-url = ZIP URL
+online-fetch = Fetch information
+online-entry = Archive entry
+online-read-size = Downloaded
+online-copy = Copy content
+online-cancelled = Fetch cancelled
+online-fetched = Read VERSION.mbn: {$bytes} bytes transferred in {$requests} requests
 page-package-description = Read an update package, select partitions, and unpack them into a workspace.
 page-images-title = Image workspace
 page-images-description = Identify, unpack, modify, and rebuild partition and boot images in one place.

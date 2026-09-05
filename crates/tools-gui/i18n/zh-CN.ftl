@@ -26,6 +26,14 @@ worker-exited-no-result = 工作进程异常退出，未返回结果
 
 page-home-title = 快速开始
 page-package-title = 更新包解包
+page-online-title = 在线信息
+online-url = ZIP 下载链接
+online-fetch = 获取信息
+online-entry = 包内文件
+online-read-size = 实际读取量
+online-copy = 复制内容
+online-cancelled = 已取消获取
+online-fetched = 已读取 VERSION.mbn：传输 {$bytes} 字节，共 {$requests} 次请求
 page-package-description = 读取更新包内容，选择需要的分区并解包到工作目录。
 page-images-title = 镜像工作区
 page-images-description = 在同一处识别镜像，并完成分区镜像与启动镜像的解包、修改和重建。

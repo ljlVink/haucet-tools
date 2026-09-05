@@ -15,6 +15,9 @@ pub const WORKER_ENV: &str = "HAUCET_GUI_WORKER";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum JobOp {
+    OnlineFetch {
+        url: String,
+    },
     PackageInspect {
         input: String,
         layout: UpdateLayout,
@@ -147,6 +150,13 @@ pub fn run_worker() -> i32 {
 
 fn execute(op: &JobOp) -> Result<WorkerResult> {
     match op {
+        JobOp::OnlineFetch { url } => {
+            let info = online_fetcher::fetch_version(url)?;
+            summary_payload(
+                tr!("online-fetched", "bytes" => info.downloaded_bytes, "requests" => info.range_requests),
+                info,
+            )
+        }
         JobOp::PackageInspect { input, layout } => {
             let index = package::inspect(Path::new(input), *layout)?;
             summary_payload(
